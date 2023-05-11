@@ -1,0 +1,609 @@
+\documentclass[11pt]{article}
+
+\usepackage[colorlinks=true]{hyperref} 
+\usepackage{amsmath,amsfonts,fullpage}
+\def\E{\mathbb E}
+\def\R{\mathbb R}
+\def\P{\mathbb P}
+\def\what{\widehat}
+\def\wtilde{\widetilde}
+
+\begin{document}
+<<Homework,include=FALSE>>=
+HW.number = 4
+Due.date  = "March 21, 2023"
+@
+
+\centerline{\Large Homework \Sexpr{HW.number} }
+
+\medskip
+\centerline{ Due on \Sexpr{Due.date} }
+
+\medskip\noindent
+{\bf Instructions:} 
+\begin{itemize}
+\item Install {\tt pdflatex}, {\tt R}, and 
+{\tt RStudio} on your computer.
+\item 
+Please edit the {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} file 
+in {\tt Rstudio} and compile with {\tt knitr} instead of {\tt Sweave}. 
+Go to the menu {\tt RStudio|Preferences...|Sweave} choose the 
+{\tt knitr} option, i.e., {\tt Weave Rnw files using knitr?}
+You may have to install {\tt knitr} and other necessary packages.  
+
+\item 
+Replace "First" and "Last" in the file-name with your first and last names,
+respectively. Complete your assignment by modifying and/or adding necessary 
+R-code in the text below. 
+
+\item You should submit both a {\bf PDF file} and a {\bf ZIP file} containing the
+data and the 
+{\em HW\Sexpr{HW.number}\_First\_Last.Rnw} file required to produce the PDF.
+The file should be named "HW\Sexpr{HW.number}\_First\_Last.zip" and it 
+should contain a single 
+folder named "First\_Last" with all the necessary data files, the 
+{\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} and
+{\tt HW\Sexpr{HW.number}\_First\_Last.pdf} file, which 
+was obtained from compiling {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} with {\tt knitr}
+and \LaTeX.
+
+\item The GSI grader will annotate the PDF file you submit.  However, they will also 
+check if the code you provide in the ZIP file compiles correctly. If the file fails to 
+compile due to errors other than missing
+packages, there will be an automatic 10\% deduction to your score. 
+
+\end{itemize}
+
+\noindent {\bf Problems:} For your convenience a number of R-functions 
+are included in the .Rnw file and not shown in the compiled PDF. {\bf It is your responsibility
+to fix any bugs in the included functions so that your results are correct.}
+
+%
+% Some useful functions:
+%
+ << emp copula, include=F,out.width='0.8\\textwidth'>>=
+
+sim_Gauss_copula <- function(n,Sig){
+   require("MASS");
+   Z = MASS::mvrnorm(n = n, mu = Sig[,1]*0, Sigma=Sig);
+   se = sqrt( diag(Sig) )
+   se.inv = se;
+   se.inv[se>0] = 1/se[se>0];
+   Z = Z%*% diag(se.inv)
+   return(pnorm(Z))
+}
+
+emp.copula = function(data, n.pts = 100,  plot.points=F,
+                      main="Empirical copula", add.lines=F,col="black"){
+  n = length(data[,1]);
+  x = seq(1:n.pts)/(n.pts+1); y = x;
+  u.hat = apply(data,2,rank)/(n+1);
+  c.emp = matrix(0, nrow = n.pts,ncol=n.pts);
+  for (i in c(1:n.pts)){for (j in c(1:n.pts)){
+    c = (u.hat[,1] <= x[i])&(u.hat[,2] <= y[j]);
+    c.emp[i,j] = mean(c);
+    }
+  }
+  contour(x,y,c.emp,main=main,add=add.lines,col=col);
+  if (plot.points){
+  points(u.hat,col="red",cex=0.2);}
+  return(list("x"=x,"y"=y,"c"=c.emp));}
+ 
+ lambda = function(data,p=seq(0.8,0.95,0.01),upper=TRUE){
+  n = length(data[,1]);
+  d = length(data[1,])
+  L = array(0,dim=c(d,d,length(p)))
+  data_sign = 1;
+  if (upper == FALSE){
+    data_sign = -1;
+  }
+  u.hat = apply(data_sign*data,2,rank)/(n+1);
+  for (i in c(1:(d-1))){
+    L[i,i,] = 1;
+    for (j in c((i+1):d)){
+      for (k in c(1:length(p))){
+        c = (u.hat[,i] <= p[k])&(u.hat[,j] <= p[k]);
+        L[i,j,k] =  2- (1-mean(c))/(1-p[k]);
+        L[j,i,k] = L[i,j,k];
+    }
+   }
+  }
+  if (d==2){
+    L = L[1,2,]
+  }
+  return(drop(L));
+ }
+ 
+@
+
+
+
+
+
+
+
+
+
+
+{\bf \Large Problems:}
+
+
+\begin{enumerate}
+
+ \item Consider the R-code mimicking the code in Example 7.4 on page 168 in the text.
+ 
+
+
+{\bf (a)} Modify the above code to fit two separate multivariate t-distribution models to 
+the set of tech-sector stocks ("AAPL", "AMD", "INTC", "IBM") and the construction sector
+stocks ("AA", "CAT", "F", "MMM").  Provide $95\%$ confidence intervals for the parameters $nu$.
+
+Are the joint distributions for these two sectors significantly different?  Comment.
+
+ <<profile log-lik, include=T,out.width='0.8\\textwidth'>>=
+# rm(list=ls())
+library(MASS);
+library(mnormt);
+data = read.csv("stock_returns.csv",header = T)
+dates = as.Date(data$date);
+# idx = which((dates > as.Date("2000-01-01")))
+# #tech = c(2,3,8,9);
+# #constr = c(4,5,6,7)
+# #dat = data[idx,tech]
+# #dat = data[idx,constr]
+# dat = data[idx,-1]
+dat = data[,-1]
+
+colnames(dat)
+constr_col_idx = c(3:6)
+# colnames(dat)[constr_col_idx]
+# colnames(dat)[-constr_col_idx]
+nu.grid = seq(2.5, 4.5, 0.01);
+alpha = 0.05; q.alpha = qchisq(1-alpha,1);
+
+find_pll = function(dat){
+  n = length(nu.grid);
+  profile.log.lik = c();
+  for (nu in nu.grid){
+    fit = cov.trob(dat,nu=nu)
+    profile.log.lik= c(profile.log.lik,
+      sum(log(dmt(dat,mean=fit$center,S=fit$cov,df=nu))))
+  }
+  return(list(fit, profile.log.lik))
+}
+
+# find parameter estimates
+para_est = function(fit, profile.log.lik){
+  pll = 2*profile.log.lik
+  th = 2*max(profile.log.lik) - q.alpha
+  nu_greater = nu.grid[pll > th]
+  CI = c(min(nu_greater), max(nu_greater));CI
+  cov = round(fit$cov, 5)
+  mu = round(fit$center, 5)
+  return(list(nu.grid[which.max(profile.log.lik)], CI))
+}
+
+tech_ppl = find_pll(dat[-constr_col_idx])
+tech_para = para_est(tech_ppl[[1]], tech_ppl[[2]])
+
+constr_ppl = find_pll(dat[constr_col_idx])
+constr_para = para_est(constr_ppl[[1]], constr_ppl[[2]])
+
+plot(nu.grid,2*tech_ppl[[2]],type="l",main=
+       "Profile Loglikelihood for Technology Sectors")
+abline(h=2*max(tech_ppl[[2]]) - q.alpha,col="red")
+plot(nu.grid,2*constr_ppl[[2]],type="l",main=
+       "Profile Loglikelihood for Construction Sectors")
+abline(h=2*max(constr_ppl[[2]]) - q.alpha,col="red")
+
+knitr::kable(cbind(tech_para, constr_para))
+@
+
+The 95\% confidence interval for $\nu$ of the technology sectors is (3.38, 3.66) , and the 95\% confidence interval for $\nu$ of the construction sectors is (3.97, 4.32). Since the two confidence intervals do not overlap, we can conclude that there is evidence that the degree of freedom $\nu$ for the two joint distribution are significantly different at significance level $\alpha=0.05$, so the joint distributions for these two sectors are significantly different. 
+
+
+
+{\bf (b)} Repeat the analysis in part {\bf (a)} for each decade, i.e., $1980-1989$, 
+$1990-1999$, $2000-2009$ and $2010-2019$ by judiciously changing the grid of $\nu$ parameter
+values.  Plot the resulting $95\%$ confidence intervals for $\nu$ along with the MLE $\hat \nu_{ML}$ as a function of the decade period.  Do so for each of the two sectors and comment.
+
+{\bf Note: } If you wish you may also consider shorter time-periods like consecutive
+$5-$year periods starting from $1980$.
+
+
+<<p1b>>=
+dec_time = seq(1980,2010, by = 10)
+tech.nu.mle = vector()
+tech.nu.lower.ci = vector()
+tech.nu.upper.ci = vector()
+constr.nu.mle = vector()
+constr.nu.lower.ci = vector()
+constr.nu.upper.ci = vector()
+
+nu.grid = seq(2.1, 8, 0.01);
+
+for(i in 1:length(dec_time)){
+  start_year = dec_time[i]
+  dec_idx = which((dates >= as.Date(paste0(start_year,"-01-01")) & 
+                     dates < as.Date(paste0(start_year+10,"-01-01"))))
+  dec_data = data[dec_idx,-1]
+  # print(start_year)
+  tech_ppl = find_pll(dec_data[-constr_col_idx])
+  tech_para = para_est(tech_ppl[[1]], tech_ppl[[2]])
+  tech.nu.mle[i] = tech_para[[1]]
+  tech.nu.lower.ci[i] = tech_para[[2]][1]
+  tech.nu.upper.ci[i] = tech_para[[2]][2]
+    
+  constr_ppl = find_pll(dec_data[constr_col_idx])
+  constr_para = para_est(constr_ppl[[1]], constr_ppl[[2]])
+  constr.nu.mle[i] = constr_para[[1]]
+  constr.nu.lower.ci[i] = constr_para[[2]][1]
+  constr.nu.upper.ci[i] = constr_para[[2]][2]
+}
+
+al = c(tech.nu.mle, tech.nu.lower.ci,tech.nu.upper.ci,
+       constr.nu.mle, constr.nu.lower.ci,constr.nu.upper.ci)
+plot(x = dec_time, tech.nu.mle, type="l", 
+     ylim = c(min(al), max(al)), 
+     main = "MLE and 95% CI of nu for different decades",
+     xlab = "Start year of the decade")
+print(tech.nu.mle)
+lines(dec_time, tech.nu.lower.ci, col = "red")
+lines(dec_time, tech.nu.upper.ci, col = "red")
+lines(x = dec_time, constr.nu.mle, lty = 2)
+# text(dec_time, tech.nu.mle, labels = tech.nu.mle, pos = 3)
+# text(dec_time, constr.nu.mle, labels = constr.nu.mle, pos = 3)
+lines(dec_time, constr.nu.lower.ci, col = "red", lty = 2)
+lines(dec_time, constr.nu.upper.ci, col = "red", lty = 2)
+legend("topright", legend = c("technology", "construction"), 
+       lty = c(1, 2))
+
+@
+
+The black line is the $\hat{\nu}_{MLE}$, and the red lines are the lower and upper endpoint of the 95\% CI for $\nu$. 
+
+
+
+\newpage
+\item The goal of this exercise is to practice simulation from copula models,
+qualitative copula calibration via Kendall's $\tau$, as well as tail-dependence inference.
+
+{\bf (a)} The following function simulates from the Gaussian copula.  Write a similar
+function that simulates from the t-copula, given a correlation matrix $\Sigma$ and the 
+parameter $\nu$. Validate and illustrate the output of your simulation (for several values of $\nu$) using the function {\tt emp.copula} (as in part {\bf (b)} below).
+
+<<problem 2, echo=T>>=
+require(mvtnorm)
+sim_Gauss_copula <- function(n,Sig){
+   require("MASS");
+   Z = MASS::mvrnorm(n = n, mu = Sig[,1]*0, Sigma=Sig);
+   se = sqrt( diag(Sig) )
+   se.inv = se;
+   se.inv[se>0] = 1/se[se>0];
+   Z = Z%*% diag(se.inv)
+   return(pnorm(Z))
+}
+
+sim_t_copula <- function(n, nu, Sigma) {
+  Z <- rmvt(n = n, sigma = Sigma, df = nu)
+  se <- sqrt(diag(Sigma))
+  se.inv <- se
+  se.inv[se > 0] <- 1/se[se > 0]
+  Z <- Z %*% diag(se.inv)
+  return(pt(Z, nu))
+}
+
+sim_t_copula1 <- function(n, nu, Sig) {
+  require("MASS");
+  Z <- MASS::mvrnorm(n = n, mu = Sig[,1]*0, Sigma=Sig)
+  se <- sqrt(diag(Sig))
+  se.inv <- se
+  se.inv[se > 0] <- 1/se[se > 0]
+  Z <- Z %*% diag(se.inv)
+  Y = rgamma(n, nu/2, 1/2)
+  Z = Z / sqrt(Y/nu)
+  return(pt(Z, nu))
+}
+
+set.seed(509040201)
+n=1e4
+nus = c(1.1,2.1,3,5)
+sig = diag(2)+0.5
+par(mfrow = c(2,2))
+for(i in 1:length(nus)){
+  st1 = sim_t_copula1(n, nus[i], sig)
+  st2 = rmvt(n,df = nus[i], sig)
+  ec.st1 = emp.copula(data = st1, col="red", 
+  main = paste0("Empirical copula for nu = ", nus[i]))
+  ec.st2 = emp.copula(data = st2, add.lines=T)
+}
+# par(mfrow = c(1,1))
+@
+
+{\bf (b)} Load the data from Problem 1 of the daily log-returns of {\tt IBM} and {\tt CAT}.
+Recall the fact $\rho = \sin(\pi \rho_{\tau}/2)$, where $\rho_\tau$ is Kendall's $\tau$ and
+$\rho$ is the correlation parameter in the matrix 
+$$
+\Sigma = \left(\begin{array}{ll}
+1 & \rho\\
+\rho & 1 \end{array} \right),
+$$
+for both the Gaussian and t-distribution copula. (See Result 8.1 on page 201 in the textbook.)
+
+Modify and add to the following code to produce comparative empirical copula plots 
+for the Gaussian {\bf as well as} the t-distribution copula calibrated to the data.  
+Do so for several different values of $\nu$ until you obtain a qualitatively good 
+fit matching the empirical copula contours.  Discuss the results of your analysis, i.e., 
+which copula seems to be calibrated best to the data.
+
+<<problem 2.b, echo=T, out.width='100%'>>=
+# out.height='100%',
+# out.width='0.5\\textwidth'
+set.seed(509040202)
+rho.tau = cor(data$IBM,data$CAT,method="kendall")
+# rho.tau=0.2
+rho = sin(rho.tau*pi/2)
+Sig = matrix(c(1,rho,rho,1),2,2)
+# par(mfrow=c(1,1))
+c.emp = emp.copula(data = cbind(data$IBM,data$CAT),
+               main = "Empirical Copula of (IBM,CAT): Gauss fit");
+U.Gauss = sim_Gauss_copula(n=10000,Sig=Sig)
+c.Gauss = emp.copula(data = U.Gauss,add.lines = TRUE,col = "red")
+
+nus = seq(1.1, 6.6, by = 0.5)
+par(mfrow=c(2,2))
+for(i in 1:length(nus)){
+  c.emp = emp.copula(data = cbind(data$IBM,data$CAT),
+               main = paste0("Empirical Copula of (IBM,CAT): 
+                             t fit nu=", nus[i]));
+  U.t = sim_t_copula(n=3e4,nu = nus[i], Sigma=Sig)
+  # print(i)
+  c.t = emp.copula(data = U.t,add.lines = TRUE,col = "red")
+}
+
+@
+
+After visually examining the plots, $\nu=3.6$ would be the best choice since the black line which is the empirical copula for the data aligns the best with the red line which is the t copula. 
+
+{\bf (c)} {\bf Tail-dependence.}  Using the qualitatively 
+calibrated t-distribution copula model, produce an estimate of the lower tail dependence
+coefficient for the {\tt IBM} and {\tt CAT} stocks and compare it with the empirical lower tail
+dependence coefficient.  That is, if $C_t$ and $C_{\rm emp}$ 
+are the calibrated $t$-copula and the empirical copula of the data, respectively, plot on the same
+plot
+$$
+ \lambda_{t,L}(\alpha):= \frac{ C_t(\alpha,\alpha)}{\alpha} \ \ \mbox{ and }\ \ 
+ \lambda_{emp,L}(\alpha):= \frac{ C_{\rm emp}(\alpha,\alpha)}{\alpha},
+$$
+for $\alpha =$ {\tt seq(0.001,to=0.1,by=0.001)}.  You can evaluate $C_t$ either using
+Monte Carlo (by simulating from the t-copula) or numerically using the R-package copula.
+You can use the function {\tt lambda} defined (but not displayed) above. Do not use 
+{\tt emp.copula}!
+
+{\bf Discuss:} What is the probability that the daily loss of {\tt IBM} exceeds 
+VaR$_\alpha$({\tt IBM}), given that the daily loss of {\tt CAT} exceeds 
+VaR$_\alpha$({\tt CAT}), for different ``small'' values of $\alpha$?
+
+<<p2c>>=
+set.seed(509040203)
+bn = 3.6
+alpha = seq(0.001,to=0.1,by=0.001)
+lambda.emp = lambda(data = cbind(data$IBM,data$CAT),  p = 1-alpha, upper = F)
+U.t = sim_t_copula(n=1e5,nu = bn, Sigma=Sig)
+lambda.t = lambda(data = U.t,  p = 1-alpha, upper = F)
+# lambda.t = lambda(data = rmvt(n=1e5,df = bn, Sig),  p = 1-alpha, upper = F)
+
+
+a = 0.001
+# ibm.a = quantile(data$IBM, a)
+# cat.a = quantile(data$CAT, a)
+# df = data.frame(cbind(ibm = data$IBM,cat=data$CAT))
+sum(data$IBM <= quantile(data$IBM, a) & data$CAT<= quantile(data$CAT, a)) / sum(data$CAT<= quantile(data$CAT, a))
+
+par(mfrow=c(1,1))
+plot(alpha, lambda.emp, type = "l", main = "Lower Tail Dependence Coefficient",
+     ylim =c(min(lambda.emp,lambda.t),max(lambda.emp,lambda.t)))
+lines(alpha, lambda.t, col="red")
+legend("bottomright", legend = c("lambda emp", "lambda t"), 
+       col = c("black", "red"), lty = c(1, 1))
+alphas.print = c(seq(0.001,0.009,by=0.001), seq(0.01,0.09,by=0.01), 0.1)
+lambda.emp.print = lambda(data = cbind(data$IBM,data$CAT),  p = 1-alphas.print, upper = F)
+knitr::kable(cbind(alpha = alphas.print, Probability = lambda.emp.print))
+@
+
+The above table is the probability probability that the daily loss of IBM exceeds $VaR_\alpha(IBM)$ given that the daily loss of CAT exceeds $VaR_\alpha(CAT)$ for different $\alpha$. 
+
+For example, below are the corresponding probability for some small values of $\alpha$. 
+
+For extremely small value of $\alpha=0.001$, the probability that the daily loss of IBM exceeds $VaR_\alpha(IBM)$ given that the daily loss of CAT exceeds $VaR_\alpha(CAT)$ is 0.1771083. 
+
+For relatively small value of $\alpha=0.05$, the probability that the daily loss of IBM exceeds $VaR_\alpha(IBM)$ given that the daily loss of CAT exceeds $VaR_\alpha(CAT)$ is 0.2807253.
+
+For value of $\alpha=0.1$, the probability that the daily loss of IBM exceeds $VaR_\alpha(IBM)$ given that the daily loss of CAT exceeds $VaR_\alpha(CAT)$ is 0.3162237.
+
+
+
+
+
+\newpage
+\item {\bf (a)} Solve {\em (Exercise 1, page 213)}
+Kendall's $\tau$ rank correlation between $X$ and $Y$ is $0.55$. Both $X$ and $Y$ are positive.
+What is  Kendall's $\tau$ between $X$ and $1/Y$? What is Kendall's $\tau$ between $1/X$ and $1/Y$? Explain!
+
+Given $Y$ is positive, the change from $(X,Y)$ to $(X, \frac{1}{Y})$ means that the rank/order of $Y$ is reversed, so it will change all the concordant pairs to be discordant and change all the discordant pairs to be concordant. Thus, Kendall's $\tau$ between $X$ and $\frac{1}{Y}$ will be $\rho_\tau(X, \frac{1}{Y}) = P(\text{original discordant pairs}) - P(\text{original concordant pairs})  = -(P(\text{original concordant pairs}) - P(\text{original discordant pairs}))=-0.55$. 
+
+\medskip
+
+Given both $X,Y$ are positive, similar to part (a), the change from $(X,Y)$ to $(\frac{1}{X}, \frac{1}{Y})$ means that the state of all pairs are changed twice such as all concordant pairs changed to (1) discordant and (2) back to concordant, so the state of all pairs remain unchanged which means $(\frac{1}{X}, \frac{1}{Y})$ have the same set of concordant pairs and discordant pairs as $(X,Y)$. Thus, Kendall's $\tau$ between $\frac{1}{Y}$ and $\frac{1}{Y}$ is $\rho_\tau(\frac{1}{X}, \frac{1}{Y}) = (P(\text{original concordant pairs}) - P(\text{original discordant pairs}))=0.55$.
+
+
+
+
+{\bf (b)} Solve {\em (Exercise 10, page 214)} Suppose that $Y = (Y_1,\dots, Y_d)^\top$ has a Gaussian copula, but not 
+necessarily Gaussian marginals.  Show that if $\rho_\tau(Y_i,Y_j)=0$, for all $1\le i\not=j\le d$ that $Y_1,\dots,Y_d$ are
+independent.
+
+\begin{align*}
+    \rho_T(Y_i,Y_j) &= 0 \\
+    \frac{2}{\pi}sin^{-1}(\sigma_{ij}) &= 0 \\
+    \sigma_{ij} &= \frac{\pi}{2}sin(0)\\
+    \sigma_{ij} &= 0    
+\end{align*}
+
+Consider $F(Y_1,\dots,Y_d) = C(F(Y_1),\dots,F(Y_d)) = C(\Phi(\Phi^{-1}(F(Y_1))), \dots, \Phi(\Phi^{-1}(F(Y_d))))$ is the Gaussian copula for any continuous random variable $Y_i$. 
+
+The dependence between the random variables in Gaussian copula is characterized by the non-diagonal entry $\sigma_{ij}$ of the covariance matrix $\Sigma$.
+Since $\sigma_{ij}$ for $i\ne j$ is 0 and $\Phi^{-1}(F(Y_i)) \sim Norm(0,\Sigma)$, $\Phi(\Phi^{-1}(F(Y_i))) \perp \Phi(\Phi^{-1}(F(Y_j))$ for $i\ne j$. Thus, $F(Y_i) \perp F(Y_j)$ for $i\ne j$, so $Y_q,\dots,Y_d$ are independent
+
+
+
+
+
+
+
+\newpage
+\item Let $X=(X_1,\dots,X_d)^\top$ be a random vector with continuous marginal distribution functions $F_i,\ i=1,\dots,d$.
+Suppose that $C$ is its copula.
+
+{\bf (a)} Suppose that $X(1),\dots,X(n)$ are independent realizations of the random vector $X$ and define the random vector
+ of component-wise maxima
+ $$
+ M(n):= \left(\max_{i=1,\dots,n} X_1(i),\ \max_{i=1,\dots,n} X_2(i),\ \dots, \max_{i=1,\dots,n} X_d(i)\right)^\top
+ $$
+ Show that the copula of $M(n)$ is given by
+ $$
+ C^n(u_1^{1/n},u_2^{1/n},\dots,u_d^{1/n}).
+ $$
+ 
+{\em Hint:} Without loss of generality, you can assume that the distribution functions $F_1,\dots,F_d$ are standard uniform.
+
+
+Let $Y_j = \max_{i=1,\dots,n} X_j(i),j=1,\dots,d$.
+The CDF of $Y_j$ is 
+\begin{align*}
+    F_{Y_{j}}(y) &= P(Y_j\le y)\\
+    &= P(\max_{i=1,\dots,n} X_j(i) \le y )\\
+    &= P(X_j(1)\le y, \dots, X_j(n) \le y)\\
+    &= P(X_j(1)\le y) \dots P(X_j(n) \le y)\\
+    &= F_{X_j}(y)^n\\
+    &= y^n
+\end{align*}
+
+The copula of $M(n)$ is
+\begin{align*}
+    C_{M(n)}(u_1,\dots,u_d) &= P(F(y_1)\le u_1,\dots, F(y_d)\le u_d)\\
+    &= P(y_1^n\le u_1,\dots, y_d^n\le u_d)\\
+    &= P(y_1\le u_1^{1/n},\dots, y_d\le u_d^{1/n})\\    
+    &= P(\max_{i=1,\dots,n} X_1(i) \le u_1^{1/n},\dots, \max_{i=1,\dots,n} X_d(i)\le u_d^{1/n})\\
+    &= P( X_1(1) \le u_1^{1/n},\dots,  X_1(n) \le u_1^{1/n}, \dots,  X_d(1)\le u_d^{1/n},\dots,X_d(n)\le u_d^{1/n})\\
+    &= P( X_1(1) \le u_1^{1/n},\dots,  X_d(1)\le u_d^{1/n}, \dots, X_1(n) \le u_1^{1/n},\dots,X_d(n)\le u_d^{1/n})\\
+    &= P( X_1(1) \le u_1^{1/n},\dots,  X_d(1)\le u_d^{1/n}) \dots P( X_1(n) \le u_1^{1/n},\dots,X_d(n)\le u_d^{1/n})\\
+    &= P( X_1 \le u_1^{1/n},\dots,  X_d\le u_d^{1/n})^n\\
+    &= C^n( u_1^{1/n},\dots, u_d^{1/n})
+\end{align*}
+
+
+
+{\bf (b)} Consider the following bivariate copula
+$$
+C(u_1,u_2):= \exp\left\{ - 2 \int_0^1 \max\{ x \log(1/u_1), (1-x) \log(1/u_2)\} \sigma(dx)\right\}
+$$
+where $\sigma$ is such a probability distribution on $[0,1]$ that $\int_0^1 x \sigma(dx) = \int_0^1 (1-x) \sigma(dx) = 1/2$. 
+Prove that 
+$$
+C^t(u_1^{1/t},u_2^{1/t}) = C(u_1,u_2),\ \ \mbox{ for all $t>0$ and }u_1,u_2\in [0,1].
+$$
+In view of part {\bf (a)}, what can you say about this copula?
+
+
+\begin{align*}
+    C^t(u_1^{1/t}, u_2^{1/t}) &= exp\{ -2\int_0^1 \max\{x\log\left(\frac{1}{u_1^{1/t}}\right), (1-x)\log\left(\frac{1}{u_2^{1/t}}\right) \} \sigma(dx)\}^t\\
+    &= exp\{ -2*t\int_0^1 \max\{x\frac{1}{t}\log\left(\frac{1}{u_1}\right), (1-x)\frac{1}{t}\log\left(\frac{1}{u_2}\right) \} \sigma(dx)\}\\
+    &= exp\{ -2*t \frac{1}{t}\int_0^1 \max\{x\log\left(\frac{1}{u_1}\right), (1-x)\log\left(\frac{1}{u_2}\right) \} \sigma(dx)\}\\
+    &= exp\{ -2\int_0^1 \max\{x\log\left(\frac{1}{u_1}\right), (1-x)\log\left(\frac{1}{u_2}\right) \} \sigma(dx)\}\\
+    &= C(u_1,u_2)
+\end{align*}
+In view of part (a), for random vector $(U_1,U_2)$ with continuous marginal distribution function, it has the same copula as the component wise maximum of $t$ independent realization of the same random vector $(U_1,U_2)$.
+
+
+
+
+
+\newpage
+\item Let $\varphi:(0,1]\to [0,\infty)$ be a strictly decreasing and twice coninuously differntiable convex function such 
+that $\lim_{t\to 1} \varphi(t) = 0$ and $\lim_{t\downarrow 0}\varphi(t)$.  
+
+{\bf (a)} Show that
+$$
+C(u_1,u_2):= \varphi^{-1}(\varphi(u_1) + \varphi(u_2)),\ \ (u_1,u_2)\in [0,1]^2
+$$
+is a valid cumulative distribution function. 
+
+{\em Hint:} You should verify that $C$ satisfies the conditions for being a valid CDF with uniform marginals.  The hardest
+part is to verify that $\Delta C := C(u_1,u_2) - C(u_1,v_2) - C(v_1,u_2) + C(v_1,v_2) \ge 0$, for every 
+choice of $(u_1,u_2) \le (v_1,v_2)$ in $[0,1]^2$, where the last inequality is taken component-wise.  You can verify that
+by showing that $\partial_{u_1,u_2}^2 C(u_1,u_2)\ge 0$, for all $(u_1,u_2)\in [0,1]^2$.
+
+
+Given that $\varphi(0) = \infty$ and $\varphi(1) = 0$, we can calculate
+
+ $C(0,0) = \varphi^{-1}(\varphi(0)+  \varphi(0))=\varphi^{-1}(\infty) = 0$
+
+$C(0,1) = \varphi^{-1}(\varphi(0)+  \varphi(1))=\varphi^{-1}(\infty) = 0$
+
+$C(1,0) = \varphi^{-1}(\varphi(1)+  \varphi(0))=\varphi^{-1}(\infty) = 0$
+
+$C(1,1) = \varphi^{-1}(\varphi(1)+  \varphi(1))=\varphi^{-1}(0) = 1$
+
+The first partial derivative with respect to $u_1$ is
+$\frac{\partial C(u_1,u_2)}{\partial u_1} = \frac{\partial \varphi^{-1}(\varphi(u_1)+  \varphi(u_2))}{\partial u_1} \varphi'(u_1) = (\varphi'(\varphi^{-1}(\varphi(u_1)+  \varphi(u_2)))^{-1}  \varphi'(u_1)$.
+
+Similarly, the first partial derivative with respect to $u_2$  is 
+$\frac{\partial C(u_1,u_2)}{\partial u_2} = \varphi'(\varphi^{-1}(\varphi(u_1)+  \varphi(u_2))  \varphi'(u_2)$.
+
+Since $\varphi$ is strictly decreasing, $\varphi' < 0$. Thus, both $\frac{\partial C(u_1,u_2)}{\partial u_1} > 0$ and $\frac{\partial C(u_1,u_2)}{\partial u_2} > 0$.
+
+The second partial derivative is $\frac{\partial C(u_1,u_2)}{\partial u_1,u_2} =  \frac{\partial \varphi'(\varphi^{-1}(\varphi(u_1)+  \varphi(u_2))  \varphi'(u_1)}{\partial u_2} =
+\\ -(\varphi'(\varphi^{-1}(\varphi(u_1)+  \varphi(u_2))))^{-3} \varphi''(\varphi^{-1}(\varphi(u_1)+  \varphi(u_2))) \varphi'(u_1) \varphi'(u_2)$
+
+Since $\varphi$ is convex, $\varphi'' \ge 0$. Recall from above that  $\varphi' < 0$, $(\varphi')^{-3} < 0$. 
+
+Thus, $\frac{\partial C(u_1,u_2)}{\partial u_1,u_2} = - - + - - = + \ge 0 $.
+
+Therefore, $C(u_1,u_2)$ is a valid CDF. 
+
+
+
+{\bf (b)} Suppose that $(X_1,X_2)$ have a bivariate copula $C$.  Determine the copula $C_Y$ of
+$(Y_1,Y_2) := (-X_1,X_2)$ and the copula $C_Z$ of $(Z_1,Z_2):= (-X_1,-X_2)$. 
+
+{\em Hint:} Suppose, without loss of generality, that $X_1$ and $X_2$ have uniform marginal distributions. The copula of
+$(Y_1,Y_2)$ and $(\wtilde Y_1,\wtilde Y_2) := (1-X_1,X_2)$ are the same, but notice that $\wtilde Y_1$ and $\wtilde Y_2$ have
+Uniform$(0,1)$ distributions.  Use $C$ to express
+$$
+C_Y(u_1,u_2) = \P( \wtilde Y_1 \le u_1, \wtilde Y_2\le u_2) = \P (1-X_1\le u_1,X_2\le u_2).
+$$
+
+\begin{align*}
+    C_Y(u_1,u_2) &= P(\tilde Y_1 \le u_1, \tilde Y_2 \le u_2) \\
+    &= P(1-X_1 \le u_1, X_2 \le u_2) \\
+    &= P(X_1 > 1-u_1, X_2 \le u_2) \\
+    &= P(X_2\le x_2) - P(X_1 \le 1-u_1, X_2 \le u_2) \\    
+    &= P(X_2\le x_2) - P(X_1 \le 1-u_1, X_2 \le u_2) \\ 
+    &= u_2 - C(1-u_1, u_2)
+\end{align*}
+
+Similarly, the copula of $(Z_1,Z_2)$ and $ (\tilde Z_1, \tilde Z_2) := (1-X_1,1-X_2)$ are the same, and $\tilde Z_1, \tilde Z_2 \sim Uniform(0,1)$. Then,
+\begin{align*}
+    C_Z(u_1,u_2) &= P(\tilde Z_1  \le u_1, \tilde Z_2 \le u_2)\\
+    &=  P(1-X_1  \le u_1, 1-X_2 \le u_2)\\
+    &=  P(X_1  > 1- u_1, X_2 > 1- u_2)\\    
+    &=  1-P(X_1  \le 1- u_1\cup X_2 \le 1- u_2)\\
+    &=  1-P(X_1  \le  1- u_1) -P(X_2  \le  1- u_2)+ P(X_1  \le 1- u_1, X_2 \le 1- u_2)\\
+    &=  u_1 +u_2-1+ C( 1- u_1,1- u_2)\\
+\end{align*}
+
+
+
+\end{enumerate}
+\end{document}

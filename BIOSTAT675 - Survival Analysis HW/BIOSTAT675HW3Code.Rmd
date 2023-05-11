@@ -1,0 +1,481 @@
+---
+title: "BIOSTAT675HW3Code"
+author: "Mingyu Zhong"
+date: "2023-02-13"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1
+```{r}
+rm(list = ls())
+library(haven)
+library(survival)
+p1df = read_sas("anemia2.sas7bdat")
+```
+## (a)
+### (i)
+```{r}
+g1 = p1df[p1df$age <= 19, ]
+x1 = g1$obs_time
+delta1 = g1$GVHD
+g2 = p1df[p1df$age >= 20, ]
+x2 = g2$obs_time
+delta2 = g2$GVHD
+tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1])))
+Yj = vector()
+Dj = vector()
+Y1j = vector()
+D1j = vector()
+Y2j = vector()
+D2j = vector()
+haz1 = vector()
+haz2 = vector()
+cum.haz1 = vector()
+cum.haz2 = vector()
+surv1 = vector()
+surv2 = vector()
+
+x = p1df$obs_time
+delta = p1df$GVHD
+Utemp = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  
+  #g1
+  Y1j[i] = length(x1[x1>=tj[i]])
+  D1j[i] = length(x1[x1 == tj[i] & delta1 == 1])
+  haz1[i] = D1j[i] / Y1j[i]
+  cum.haz1[i] = sum(haz1[1:i])
+  surv1[i] = prod(1-haz1[1:i])
+  
+  #g2
+  Y2j[i] = length(x2[x2>=tj[i]])
+  D2j[i] = length(x2[x2 == tj[i] & delta2 == 1])
+  haz2[i] = D2j[i] / Y2j[i]
+  cum.haz2[i] = sum(haz2[1:i])
+  surv2[i] = prod(1-haz2[1:i])
+}
+# cbind(tj, cum.haz1, cum.haz2, surv1, surv2)
+
+
+# Graphs
+le = c("age >= 20", "age <= 19")
+plot(tj, surv2, type = "s", lty = 2, lwd = 1, col=1,
+     ylim = c(min(surv2,surv1),1),
+     main = "Survival functions",
+     ylab = "survival")
+lines(tj, surv1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("bottomleft", le, lty = c(2, 2), col = 1:2)
+
+plot(tj, cum.haz2, type = "s", lty = 2, lwd = 1,
+     ylim = c(min(cum.haz2,cum.haz1),max(cum.haz2,cum.haz1)),
+     main = "Cumulative Hazard functions",
+     ylab = "Cumulative Hazard")
+lines(tj, cum.haz1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+lch2.idx = cum.haz2 > 0
+lch1.idx = cum.haz1 > 0
+plot(tj[lch2.idx], log(cum.haz2)[lch2.idx], type = "s", lty = 2, lwd = 1,
+     ylim = c(min(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx]),
+              max(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx])),
+     main = "Log Cumulative Hazard functions",
+     ylab = "Log Cumulative Hazard", xlab = "tj")
+lines(tj[lch1.idx], log(cum.haz1)[lch1.idx],  lty = 2, 
+      lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+
+UL = D1j - Dj*(Y1j)/Yj
+VL = Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+age.test.statistics.LogRank = sum(UL) / sqrt(sum(VL))
+age.p.value.LogRank = 2*pnorm(-abs(age.test.statistics.LogRank))
+
+UW = Yj * (D1j - Dj*(Y1j)/Yj)
+VW = (Yj^2)*Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+age.test.statistics.Wilcoxon = sum(UW) / sqrt(sum(VW))
+age.p.value.Wilcoxon = 2*pnorm(-abs(age.test.statistics.Wilcoxon))
+```
+
+
+### (ii)
+```{r}
+g1 = p1df[p1df$LAF == 1, ]
+x1 = g1$obs_time
+delta1 = g1$GVHD
+g2 = p1df[p1df$LAF == 0, ]
+x2 = g2$obs_time
+delta2 = g2$GVHD
+tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1])))
+Yj = vector()
+Dj = vector()
+Y1j = vector()
+D1j = vector()
+Y2j = vector()
+D2j = vector()
+haz1 = vector()
+haz2 = vector()
+cum.haz1 = vector()
+cum.haz2 = vector()
+surv1 = vector()
+surv2 = vector()
+
+x = p1df$obs_time
+delta = p1df$GVHD
+Utemp = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  
+  #g1
+  Y1j[i] = length(x1[x1>=tj[i]])
+  D1j[i] = length(x1[x1 == tj[i] & delta1 == 1])
+  haz1[i] = D1j[i] / Y1j[i]
+  cum.haz1[i] = sum(haz1[1:i])
+  surv1[i] = prod(1-haz1[1:i])
+  
+  #g2
+  Y2j[i] = length(x2[x2>=tj[i]])
+  D2j[i] = length(x2[x2 == tj[i] & delta2 == 1])
+  haz2[i] = D2j[i] / Y2j[i]
+  cum.haz2[i] = sum(haz2[1:i])
+  surv2[i] = prod(1-haz2[1:i])
+}
+# cbind(tj, cum.haz1, cum.haz2, surv1, surv2)
+
+
+# Graphs
+le = c("LAF = 0","LAF = 1")
+plot(tj, surv2, type = "s", lty = 2, lwd = 1, col=1,
+     ylim = c(min(surv2,surv1),1),
+     main = "Survival functions",
+     ylab = "survival")
+lines(tj, surv1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("bottomleft", le, lty = c(2, 2), col = 1:2)
+
+plot(tj, cum.haz2, type = "s", lty = 2, lwd = 1,
+     ylim = c(min(cum.haz2,cum.haz1),max(cum.haz2,cum.haz1)),
+     main = "Cumulative Hazard functions",
+     ylab = "Cumulative Hazard")
+lines(tj, cum.haz1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+lch2.idx = cum.haz2 > 0
+lch1.idx = cum.haz1 > 0
+plot(tj[lch2.idx], log(cum.haz2)[lch2.idx], type = "s", lty = 2, lwd = 1,
+     ylim = c(min(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx]),
+              max(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx])),
+     main = "Log Cumulative Hazard functions",
+     ylab = "Log Cumulative Hazard", xlab = "tj")
+lines(tj[lch1.idx], log(cum.haz1)[lch1.idx],  lty = 2, lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+UL = D1j - Dj*(Y1j)/Yj
+VL = Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+LAF.test.statistics.LogRank = sum(UL) / sqrt(sum(VL))
+LAF.p.value.LogRank = 2*pnorm(-abs(LAF.test.statistics.LogRank))
+
+UW = Yj * (D1j - Dj*(Y1j)/Yj)
+VW = (Yj^2)*Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+LAF.test.statistics.Wilcoxon = sum(UW) / sqrt(sum(VW))
+LAF.p.value.Wilcoxon = 2*pnorm(-abs(LAF.test.statistics.Wilcoxon))
+```
+
+### (iii)
+```{r}
+g1 = p1df[p1df$CSP_MTX == 1, ]
+x1 = g1$obs_time
+delta1 = g1$GVHD
+g2 = p1df[p1df$CSP_MTX == 0, ]
+x2 = g2$obs_time
+delta2 = g2$GVHD
+tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1])))
+Yj = vector()
+Dj = vector()
+Y1j = vector()
+D1j = vector()
+Y2j = vector()
+D2j = vector()
+haz1 = vector()
+haz2 = vector()
+cum.haz1 = vector()
+cum.haz2 = vector()
+surv1 = vector()
+surv2 = vector()
+
+x = p1df$obs_time
+delta = p1df$GVHD
+Utemp = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  
+  #g1
+  Y1j[i] = length(x1[x1>=tj[i]])
+  D1j[i] = length(x1[x1 == tj[i] & delta1 == 1])
+  haz1[i] = D1j[i] / Y1j[i]
+  cum.haz1[i] = sum(haz1[1:i])
+  surv1[i] = prod(1-haz1[1:i])
+  
+  #g2
+  Y2j[i] = length(x2[x2>=tj[i]])
+  D2j[i] = length(x2[x2 == tj[i] & delta2 == 1])
+  haz2[i] = D2j[i] / Y2j[i]
+  cum.haz2[i] = sum(haz2[1:i])
+  surv2[i] = prod(1-haz2[1:i])
+}
+# cbind(tj, cum.haz1, cum.haz2, surv1, surv2)
+
+
+# Graphs
+le = c("CSP_MTX = 0","CSP_MTX = 1")
+plot(tj, surv2, type = "s", lty = 2, lwd = 1, col=1,
+     ylim = c(min(surv2,surv1),1),
+     main = "Survival functions",
+     ylab = "survival")
+lines(tj, surv1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("bottomleft", le, lty = c(2, 2), col = 1:2)
+
+plot(tj, cum.haz2, type = "s", lty = 2, lwd = 1,
+     ylim = c(min(cum.haz2,cum.haz1),max(cum.haz2,cum.haz1)),
+     main = "Cumulative Hazard functions",
+     ylab = "Cumulative Hazard")
+lines(tj, cum.haz1,  lty = 2, lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+lch2.idx = cum.haz2 > 0
+lch1.idx = cum.haz1 > 0
+plot(tj[lch2.idx], log(cum.haz2)[lch2.idx], type = "s", lty = 2, lwd = 1,
+     ylim = c(min(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx]),
+              max(log(cum.haz2)[lch2.idx],log(cum.haz1)[lch1.idx])),
+     main = "Log Cumulative Hazard functions",
+     ylab = "Log Cumulative Hazard", xlab = "tj")
+lines(tj[lch1.idx], log(cum.haz1)[lch1.idx],  lty = 2, 
+      lwd = 1, type = "s", col = 2)
+legend("topleft", le, lty = c(2, 2), col = 1:2)
+
+
+UL = D1j - Dj*(Y1j)/Yj
+VL = Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+CSP_MTX.test.statistics.LogRank = sum(UL) / sqrt(sum(VL))
+CSP_MTX.p.value.LogRank = 2*pnorm(-abs(CSP_MTX.test.statistics.LogRank))
+
+UW = Yj * (D1j - Dj*(Y1j)/Yj)
+VW = (Yj^2)*Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+CSP_MTX.test.statistics.Wilcoxon = sum(UW) / sqrt(sum(VW))
+CSP_MTX.p.value.Wilcoxon =
+  2*pnorm(-abs(CSP_MTX.test.statistics.Wilcoxon))
+  
+# library(survival)
+# p1df = read_sas("anemia2.sas7bdat")
+# res = survdiff(Surv(obs_time, GVHD == 1) ~ CSP_MTX, data = p1df);res
+# res.w = survdiff(Surv(obs_time, GVHD == 1) ~ CSP_MTX, data = p1df, rho = 1);res.w
+```
+
+
+
+### Table
+```{r}
+Covariate = rep(c("age group", "LAF", "CSP&MTX"), each = 2)
+Test = rep(c("Log Rank", "Wilcoxon"), times = 3)
+test_statistics = c(age.test.statistics.LogRank,
+                  age.test.statistics.Wilcoxon,
+                  LAF.test.statistics.LogRank,
+                  LAF.test.statistics.Wilcoxon,
+                  CSP_MTX.test.statistics.LogRank,
+                  CSP_MTX.test.statistics.Wilcoxon)
+p.value = c(age.p.value.LogRank,
+            age.p.value.Wilcoxon,
+            LAF.p.value.LogRank,
+            LAF.p.value.Wilcoxon,
+            CSP_MTX.p.value.LogRank,
+            CSP_MTX.p.value.Wilcoxon)
+knitr::kable(cbind(Covariate, Test, test_statistics,p.value),booktabs = TRUE)
+```
+
+## (c)
+```{r}
+# age <= 19
+p1df = read_sas("anemia2.sas7bdat")
+p1df = p1df[p1df$age <= 19, ]
+g1 = p1df[p1df$CSP_MTX == 1, ]
+x1 = g1$obs_time
+delta1 = g1$GVHD
+g2 = p1df[p1df$CSP_MTX == 0, ]
+x2 = g2$obs_time
+delta2 = g2$GVHD
+tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1])))
+Yj = vector()
+Dj = vector()
+Y1j = vector()
+D1j = vector()
+Y2j = vector()
+D2j = vector()
+haz1 = vector()
+haz2 = vector()
+cum.haz1 = vector()
+cum.haz2 = vector()
+surv1 = vector()
+surv2 = vector()
+
+x = p1df$obs_time
+delta = p1df$GVHD
+Utemp = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  
+  #g1
+  Y1j[i] = length(x1[x1>=tj[i]])
+  D1j[i] = length(x1[x1 == tj[i] & delta1 == 1])
+  haz1[i] = D1j[i] / Y1j[i]
+  cum.haz1[i] = sum(haz1[1:i])
+  surv1[i] = prod(1-haz1[1:i])
+  
+  #g2
+  Y2j[i] = length(x2[x2>=tj[i]])
+  D2j[i] = length(x2[x2 == tj[i] & delta2 == 1])
+  haz2[i] = D2j[i] / Y2j[i]
+  cum.haz2[i] = sum(haz2[1:i])
+  surv2[i] = prod(1-haz2[1:i])
+}
+
+UL.la = D1j - Dj*(Y1j)/Yj
+VL.la = Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+CSP_MTX.test.statistics.LogRank.la = sum(UL) / sqrt(sum(VL))
+CSP_MTX.p.value.LogRank.la =
+  2*pnorm(-abs(CSP_MTX.test.statistics.LogRank.la))
+
+# age >= 20
+p1df = read_sas("anemia2.sas7bdat")
+p1df = p1df[p1df$age >= 20, ]
+g1 = p1df[p1df$CSP_MTX == 1, ]
+x1 = g1$obs_time
+delta1 = g1$GVHD
+g2 = p1df[p1df$CSP_MTX == 0, ]
+x2 = g2$obs_time
+delta2 = g2$GVHD
+tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1])))
+Yj = vector()
+Dj = vector()
+Y1j = vector()
+D1j = vector()
+Y2j = vector()
+D2j = vector()
+haz1 = vector()
+haz2 = vector()
+cum.haz1 = vector()
+cum.haz2 = vector()
+surv1 = vector()
+surv2 = vector()
+
+x = p1df$obs_time
+delta = p1df$GVHD
+Utemp = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  
+  #g1
+  Y1j[i] = length(x1[x1>=tj[i]])
+  D1j[i] = length(x1[x1 == tj[i] & delta1 == 1])
+  haz1[i] = D1j[i] / Y1j[i]
+  cum.haz1[i] = sum(haz1[1:i])
+  surv1[i] = prod(1-haz1[1:i])
+  
+  #g2
+  Y2j[i] = length(x2[x2>=tj[i]])
+  D2j[i] = length(x2[x2 == tj[i] & delta2 == 1])
+  haz2[i] = D2j[i] / Y2j[i]
+  cum.haz2[i] = sum(haz2[1:i])
+  surv2[i] = prod(1-haz2[1:i])
+}
+
+UL.ua = D1j - Dj*(Y1j)/Yj
+VL.ua = Dj*Y1j*Y2j*(Yj-Dj)/(Yj^2)/(Yj-1)
+CSP_MTX.test.statistics.LogRank.ua = sum(UL) / sqrt(sum(VL))
+CSP_MTX.p.value.LogRank.ua =
+  2*pnorm(-abs(CSP_MTX.test.statistics.LogRank.ua))
+
+# total.ts = (sum(UL.ua)^2 + sum(UL.la)^2)/(sum(VL.la)+sum(VL.ua));total.ts
+# total.p.val = 1-pchisq((total.ts), df = 1);total.p.val
+
+p1df = read_sas("anemia2.sas7bdat")
+age_group = rep(0, nrow(p1df))
+la = p1df$age <= 19
+age_group[la] = 1
+res = survdiff(Surv(obs_time, GVHD == 1) ~ CSP_MTX + strata(age_group), data = p1df);res
+
+knitr::kable(cbind(age_group = c("age <= 19","age >= 20"),
+                   "Log_Rank_test_p-val_CSP&MTX" =
+                     c(CSP_MTX.p.value.LogRank.la,
+                       CSP_MTX.p.value.LogRank.ua)))
+```
+
+
+
+\newpage
+# Problem 2
+```{r}
+library("muhaz")
+p1df = read_sas("anemia2.sas7bdat")
+
+b = c(8,11,15)
+h1 = muhaz(p1df$obs_time, p1df$GVHD, 
+           max.time = max(p1df$obs_time[p1df$GVHD ==1]) ,
+           # bw.method="g", 
+           bw.grid=5,kern	= "e")
+plot(h1, main = "kernal smoothed hazard function")
+for(i in 1:length(b)){
+  temp = muhaz(p1df$obs_time, p1df$GVHD,
+           max.time = max(p1df$obs_time[p1df$GVHD ==1]),
+           # bw.method="g",
+           bw.grid=b[i],kern	= "e")
+  lines(temp, col = i+1)
+}
+legend("topleft", legend = sapply("bw=",  paste0, c(5,b)), 
+       lty = rep(1,4), col = c(1:4))
+```
+
+
+<!-- ```{r} -->
+<!-- p1df = read_sas("anemia2.sas7bdat") -->
+<!-- x = p1df$obs_time -->
+<!-- d= p1df$GVHD -->
+
+<!-- ker = function(x){ -->
+<!--   return(3*(1-x^2)/4) -->
+<!-- } -->
+
+<!-- #obtain haz -->
+<!-- tj = unique(sort(c(0,p1df$obs_time[p1df$GVHD == 1]))) -->
+<!-- haz = vector() -->
+<!-- for(i in 1:length(tj)){ -->
+<!--   Yj[i] = length(x[x>=tj[i]]) -->
+<!--   Dj[i] = length(x[x == tj[i] & delta == 1]) -->
+<!--   haz[i] = Dj[i] / Yj[i] -->
+<!-- } -->
+
+<!-- bv = c(5,7,10,15) -->
+<!-- # par(mfrow = c(2,2)) -->
+<!-- # plot() -->
+<!-- for(j in 1:length(bv)){ -->
+<!--   b = bv[j] -->
+<!--   t = seq(b, max(p1df$obs_time[p1df$GVHD ==1]) -b, length = 1e5) -->
+<!--   lambt = vector() -->
+<!--   for(i in 1:length(t)){ -->
+<!--     lambt[i] = sum(ker(((t[i]-tj)/b))*haz)/b -->
+<!--   } -->
+<!--   if(j == 1){ -->
+<!--     plot(t, lambt, type="l") -->
+<!--   } else{ -->
+<!--     lines(t, lambt) -->
+<!--   } -->
+<!-- } -->
+<!-- ``` -->
+

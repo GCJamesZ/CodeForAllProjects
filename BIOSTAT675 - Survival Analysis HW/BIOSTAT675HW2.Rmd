@@ -1,0 +1,114 @@
+---
+title: "BIOSTATS675 HW2"
+author: "Mingyu Zhong"
+date: "2023-02-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 1
+```{r}
+rm(list=ls())
+d <- read.table("Breast_cancer_Table_1_2_Collet.txt", sep = "\t", header = F)
+d = d$V1
+x = vector()
+delta = vector()
+for(i in 1:length(d)){
+  cur.line = gsub(" +", ",", d[i])
+  cur.line = strsplit(cur.line, ",")
+  ent = as.numeric(cur.line[[1]][1:3])
+  x[i] = ent[2]
+  delta[i] = ent[3]
+  # print(ent)
+}
+# cbind(x, delta)
+```
+
+### a
+```{r}
+tj = unique(sort(c(0,x[delta == 1])))
+Yj = vector()
+Dj = vector()
+haz = vector()
+cum.haz = vector()
+for(i in 1:length(tj)){
+  Yj[i] = length(x[x>=tj[i]])
+  Dj[i] = length(x[x == tj[i] & delta == 1])
+  haz[i] = Dj[i] / Yj[i]
+  cum.haz[i] = sum(haz[1:i])
+}
+```
+
+
+### b
+```{r}
+cum.haz.var = vector()
+for(i in 1:length(tj)){
+  cum.haz.var[i] = sum(Dj[1:i]/(Yj^2)[1:i])
+}
+z.aplha2 = qnorm(0.025+0.95)
+CI.95.b = cbind(cum.haz- z.aplha2 * cum.haz.var, cum.haz + z.aplha2 * cum.haz.var)
+```
+
+
+### c
+```{r}
+log.cum.haz.var = (haz / cum.haz)^2*cum.haz.var
+log.cum.haz.var[1] = 0
+log.cum.haz.CI = cbind(log(cum.haz)- z.aplha2 * log.cum.haz.var,
+                       log(cum.haz) + z.aplha2 * log.cum.haz.var)
+CI.95.c = exp(log.cum.haz.CI)
+```
+
+
+### d
+```{r}
+surv.func.tj = exp(-cum.haz)
+CI.95.d = exp(-(CI.95.c))
+```
+### e
+```{r}
+quartiles = c(0.25,0.5,0.75)
+tj.quartile = vector()
+for(i in 1:3){
+  idx = which(surv.func.tj <= (1-quartiles[i]))
+  if (length(idx) > 0){
+    tj.quartile[i] = tj[min(idx)]
+  } else {
+    tj.quartile[i]= NA
+  }
+}
+# knitr::kable(cbind(quartiles, tj.quartile),booktabs = TRUE)
+```
+
+
+
+
+<!-- \newpage -->
+<!-- ```{r} -->
+<!-- knitr::kable(cbind(j=c('-',1:(length(tj)-1)),tj, Yj, Dj, hazard = round(haz,6), Cum.hazard = round(cum.haz,6)),booktabs = TRUE) -->
+<!-- ``` -->
+
+
+
+<!-- \newpage -->
+<!-- ```{r} -->
+<!-- knitr::kable(cbind(j=c('-',1:(length(tj)-1)),tj, CI.95.lower.b = round(CI.95.b[,1],6), Cum.hazard = round(cum.haz,6), CI.95.upper.b = round(CI.95.b[,2],6)),booktabs = TRUE) -->
+<!-- ``` -->
+
+
+
+<!-- \newpage -->
+<!-- ```{r} -->
+<!-- knitr::kable(cbind(j=c('-',1:(length(tj)-1)),tj, CI.95.lower.c = round(CI.95.c[,1],6), Cum.hazard = round(cum.haz,6), CI.95.upper.c = round(CI.95.c[,2],6)),booktabs = TRUE) -->
+<!-- ``` -->
+
+
+
+<!-- \newpage -->
+<!-- ```{r} -->
+<!-- knitr::kable(cbind(j=c('-',1:(length(tj)-1)),tj, CI.95.lower.d = round(CI.95.d[,2],6), S.NA.tj = round(surv.func.tj,6), CI.95.upper.d = round(CI.95.d[,1],6)),booktabs = TRUE) -->
+<!-- ``` -->

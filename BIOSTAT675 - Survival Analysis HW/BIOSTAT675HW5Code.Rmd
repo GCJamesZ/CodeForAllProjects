@@ -1,0 +1,73 @@
+---
+title: "BIOSTAT675HW5"
+author: "Mingyu Zhong"
+date: "2023-04-07"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(lmtest)
+```
+
+## Problem 1
+
+### a
+
+```{r}
+rm(list = ls())
+dat = haven::read_sas("kidney_ecd_1.sas7bdat")
+# head(dat)
+# str(dat)
+# colSums(is.na(dat))
+na.idx = is.na(dat$time_to_death)
+dat$death_indicator = 1-as.integer(na.idx)
+dat$time_to_death[na.idx] = dat$time_to_censor[na.idx]
+dat$male = as.factor(dat$male)
+dat$diabetes = as.factor(dat$diabetes)
+dat$ECD = as.factor(dat$ECD)
+# names(dat)
+```
+
+```{r}
+fit.a = coxph(Surv(time_to_death , death_indicator == 1) ~ age + male + 
+                diabetes+ comorbid + ECD, dat = dat)
+summary(fit.a)
+```
+
+### (c)
+```{r}
+# Split the dat into two datsets: one before GF and one after GF
+dat_before_GF = dat[!is.na(dat$time_to_GF), ]
+dat_after_GF = dat[!is.na(dat$time_to_GF), ]
+
+dat_before_GF$death_indicator = 0
+dat_before_GF$start =0
+dat_before_GF$end = dat_before_GF$time_to_GF
+dat_before_GF$GF = 0
+
+dat_after_GF$start = dat_after_GF$time_to_GF
+dat_after_GF$end = dat_after_GF$time_to_death
+dat_after_GF$GF = 1
+
+No_GF = dat[is.na(dat$time_to_GF), ]
+No_GF$start = 0
+No_GF$end = No_GF$time_to_death
+No_GF$GF = 0
+
+new_dat = rbind(dat_before_GF, dat_after_GF, No_GF)
+new_dat = new_dat[order(new_dat$idnum), ]
+new_dat$GF = as.factor(new_dat$GF)
+# head(new_dat)
+# length(unique(new_dat$idnum))
+# length(unique(dat$idnum))
+```
+
+```{r}
+time_interval = with(new_dat, Surv(start, end, death_indicator == 1))
+cox_model_GF = coxph(time_interval ~ ECD + age + male + diabetes + 
+                       comorbid + GF, data = new_dat)
+summary(cox_model_GF)
+```
+

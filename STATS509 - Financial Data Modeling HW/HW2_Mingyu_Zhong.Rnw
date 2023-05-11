@@ -1,0 +1,595 @@
+\documentclass[11pt]{article}
+\usepackage{fullpage}
+\usepackage[colorlinks=true]{hyperref} 
+\usepackage{amsmath,amsfonts}
+\def\E{\mathbb E}
+\def\R{\mathbb R}
+\def\what{\widehat}
+
+\begin{document}
+<<Homework,include=FALSE>>=
+HW.number = 2
+Due.date  = "Thursday, Feb 2"
+@
+
+\centerline{\Large Homework \Sexpr{HW.number} }
+
+\medskip
+\centerline{ Due on \Sexpr{Due.date} }
+
+\medskip
+\noindent
+{\bf Instructions:} 
+\begin{itemize}
+\item Install {\tt pdflatex}, {\tt R}, and 
+{\tt RStudio} on your computer.
+\item 
+Please edit the {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} file 
+in {\tt Rstudio} and compile with {\tt knitr} instead of {\tt Sweave}. 
+Go to the menu {\tt RStudio|Preferences...|Sweave} choose the 
+{\tt knitr} option, i.e., {\tt Weave Rnw files using knitr?}
+You may have to install {\tt knitr} and other necessary packages.  
+
+\item Windows users: You may need to install TexLive.  
+
+\item 
+Replace "First" and "Last" in the file-name with your first and last names,
+respectively. Complete your assignment by modifying and/or adding necessary 
+R-code in the text below. 
+
+\item You should submit both the {\bf data} and the 
+{\em HW\Sexpr{HW.number}\_First\_Last.Rnw} file in a zip-file in Canvas. The zip-file 
+should be named "HW\Sexpr{HW.number}\_First\_Last.zip" and it should contain a single 
+folder named "First\_Last" with all the necessary data files, the 
+{\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} and  {\tt HW\Sexpr{HW.number}\_First\_Last.pdf} file, which 
+was obtained from compiling {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} with {\tt knitr}
+and \LaTeX.
+
+{\bf NOTE:} "First" is your first name and "Last" your last name.
+
+\item {\bf IMPORTANT:} In addition to your .zip-file, you should submit a PDF file 
+{\tt HW\Sexpr{HW.number}\_First\_Last.pdf} in Canvas. The PDF should be submitted 
+{\bf separately} form the zip-file so that the GSIs can annotate it and give you feedback.
+
+\item The GSI grader will unzip your file and compile it with Rstudio and
+knitr.  If the file fails to compile due to errors other than missing
+packages, there will be an automatic 10\% deduction to your score. Then,
+the GSI will proceed with grading your submitted PDF.   
+
+\end{itemize}
+
+{\bf \Large Problems:}
+
+\begin{enumerate}
+ 
+\item Consider the mixture model
+$$
+f(x;p,\mu,\sigma,c\sigma) = p f(x; \mu,\sigma ) + (1-p) f(x; \mu, c \sigma),
+$$
+where $f(x;\mu, \sigma)$ is the probability density of the Normal distribution with zero mean $\mu$ and variance $\sigma^2$.
+
+{\bf (a)} Let $X \sim f(x;p,\mu,\sigma,c\sigma)$. Compute 
+$$
+\E |X - \mu| \ \ \mbox{ and } \ \ \E [(X -\mu)^2]
+$$
+in terms of the parameters $p$, $c$ and $\sigma$.
+
+To find $E[|X-\mu|]$, 
+
+\begin{align*}
+    E[|X-\mu|] &= \int_{-\infty}^\infty |x-\mu|f(x)\,dx\\
+    &= \int_{-\infty}^\mu -(x-\mu)f(x)\,dx + \int_\mu^\infty (x-\mu)f(x)\,dx\\
+    &= \int_{-\infty}^\mu -(x-\mu)(p*f(x;\mu,\sigma) + (1-p)*f(x;\mu,c\sigma))\,dx + \\
+    &\,\,\, \int_\mu^\infty (x-\mu)(p*f(x;\mu,\sigma) + (1-p)*f(x;\mu,c\sigma))\,dx\\
+    &= p \left(\int_\mu^\infty (x-\mu)f(x;\mu,\sigma)\,dx - \int_{-\infty}^\mu (x-\mu)f(x;\mu,\sigma) \,\right) + \\
+    & \,\,\, (1-p)\left(\int_\mu^\infty (x-\mu)f(x;\mu,c\sigma)\,dx - \int_{-\infty}^\mu (x-\mu)f(x;\mu,c\sigma) \,\right)\\
+    &= p \left(\int_\mu^\infty (x-\mu)\frac{e^{-\frac{(x-\mu)^2}{2\sigma^2}}}{\sqrt{2\pi}\sigma}\,dx - \int_{-\infty}^\mu (x-\mu)\frac{e^{-\frac{(x-\mu)^2}{2\sigma^2}}}{\sqrt{2\pi}\sigma} \,\right) + \\
+    & \,\,\, (1-p)\left(\int_\mu^\infty (x-\mu)f(x;\mu,c\sigma)\,dx - \int_{-\infty}^\mu (x-\mu)f(x;\mu,c\sigma) \,\right)\\
+    &\text{ Let } u = \frac{(x-\mu)^2}{2\sigma^2} \rightarrow \sigma\,du = \frac{x-\mu}{\sigma}\,dx\\
+    &= \frac{p\sigma}{\sqrt{2\pi}} \left(\int_0^\infty e^{-u}\,dx - \int_{\infty}^0 e^{-u} \,\right) + \\
+    & \,\,\, (1-p)\left(\int_\mu^\infty (x-\mu)f(x;\mu,c\sigma)\,dx - \int_{-\infty}^\mu (x-\mu)f(x;\mu,c\sigma) \,\right)\\
+    &= \frac{2p\sigma}{\sqrt{2\pi}} + (1-p)\left(\int_\mu^\infty (x-\mu)f(x;\mu,c\sigma)\,dx - \int_{-\infty}^\mu (x-\mu)f(x;\mu,c\sigma) \,\right)\\
+    &= \frac{2p\sigma}{\sqrt{2\pi}} + \frac{2(1-p)c\sigma}{\sqrt{2\pi}} \\
+    &= \frac{\sqrt{2}}{\sqrt{\pi}}(p\sigma + (1-p)c\sigma)
+\end{align*}
+
+
+
+Note that $E[X] = \int_{-\infty}^{\infty} x(pf(x;\mu,\sigma) + (1-p)f(x;\mu,c\sigma)) \,dx= p\mu + (1-p)\mu = \mu$. 
+
+\begin{align*}
+  E[(X -\mu)^2] & = E[X^2+\mu^2-2\mu X]\\
+  &= E[X^2]+\mu^2-2\mu E[X]\\
+  &= \int_{-\infty}^{\infty} x^2(pf(x;\mu,\sigma) + (1-p)f(x;\mu,c\sigma))\,dx +\mu^2 -2\mu^2\\
+  &= p\int_{-\infty}^{\infty} x^2f(x;\mu,\sigma)\,dx + (1-p)\int_{-\infty}^{\infty}x^2f(x;\mu,c\sigma)\,dx -\mu^2 \\
+  & \text{Let } A \sim N(\mu,\sigma^2), B\sim N(\mu,(c\sigma)^2)\\
+  &= p(Var(A)+(E[A])^2) + (1-p)(Var(B)+(E[B])^2)-\mu^2 \\
+  &= p(\sigma^2 +\mu^2) + (1-p)((c\sigma)^2+\mu^2)-\mu^2\\
+  &= p\sigma^2 + (1-p)c^2\sigma^2\\
+\end{align*}
+
+
+
+{\bf (b)} The parameter $\sigma>0$ is known.  Given an iid sample $X_1,\dots,X_n \sim f(x;p,\mu,\sigma,c\sigma)$, 
+construct estimators for the unknown parameters $p,\ \mu$, $c>0$ using the (generalized) method of moments.
+
+{\em Hint:} You can estimate $\mu$ via $\overline X_n$.  Consider the statistics
+$$
+\what m_1 := \frac{1}{n} \sum_{i=1}^n |X_i-\overline X_n|\ \ \mbox{ and }
+\ \ \what m_2 := \frac{1}{n} \sum_{i=1}^n (X_i-\overline X_n)^2,
+$$
+which estimate $\E |X - \mu|$ and $\E [(X - \mu)^2]$, respectively.  Using the formulae derived in {\bf (a)}, solve for
+$p$ and $c$.
+
+\bigskip
+
+By part (a), we have
+\begin{equation}
+    \begin{cases}
+      \sqrt{\frac{2}{\pi}}(p\sigma+(1-p)c\sigma = \hat{m}_1 \\
+      p\sigma^2 + (1-p)c^2\sigma^2 = \hat{m}_2
+    \end{cases}\,.
+\end{equation}
+
+Solve both equation for $p$, we can get
+\begin{equation}
+    \begin{cases}
+      p=\frac{\hat{m}_1\sqrt{\frac{\pi}{2}}-c\sigma}{\sigma-c\sigma}\\
+      p = \frac{\hat{m}_2-c^2\sigma^2}{\sigma^2 - c^2\sigma^2}
+    \end{cases}\,.
+\end{equation}
+
+Set them equal to find $c$,
+\begin{align*}
+    \frac{\hat{m}_1\sqrt{\frac{\pi}{2}}-c\sigma}{\sigma-c\sigma} &= \frac{\hat{m}_2-c^2\sigma^2}{\sigma^2 - c^2\sigma^2}\\
+    (\sigma+c\sigma)(\hat{m}_1\sqrt{\frac{\pi}{2}}-c\sigma) &= \hat{m}_2-c^2\sigma^2\\
+    c^2\sigma^2 &= \hat{m}_2 - (\sigma \hat{m}_1\sqrt{\frac{\pi}{2}} - c\sigma^2 + c\sigma \hat{m}_1\sqrt{\frac{\pi}{2}}-c^2\sigma^2)\\
+    0 &= \hat{m}_2 - \sigma \hat{m}_1\sqrt{\frac{\pi}{2}} + c\sigma^2 -c\sigma \hat{m}_1\sqrt{\frac{\pi}{2}}\\
+    c &= \frac{\sigma \hat{m}_1\sqrt{\frac{\pi}{2}}-\hat{m}_2}{\sigma^2 - \sigma \hat{m}_1\sqrt{\frac{\pi}{2}}}
+\end{align*}
+
+Lastly, we can substitute $c$ back to the equation (2) to find $p$, so $p = \frac{\hat{m}_1\sqrt{\frac{\pi}{2}}-c\sigma}{\sigma-c\sigma}=\frac{\hat{m}_1\sqrt{\frac{\pi}{2}}-\frac{\sigma \hat{m}_1\sqrt{\frac{\pi}{2}}-\hat{m}_2}{\sigma^2 - \sigma \hat{m}_1\sqrt{\frac{\pi}{2}}}\sigma}{\sigma(1-\frac{\sigma \hat{m}_1\sqrt{\frac{\pi}{2}}-\hat{m}_2}{\sigma^2 - \sigma \hat{m}_1\sqrt{\frac{\pi}{2}}})}$. 
+
+
+
+{\bf (c)} Let $\mu=0.1$, $p=0.3$, $\sigma=1$ and $c=1.3$.  Simulate $n=500$ independent samples from the above mixture
+model and compute the point estimators from part {\bf (b)}.  Repeat this simulation $N=1000$ times and produce a 
+table with the empirical $95\%$ confidence intervals for $\mu$, $p$ and $c$.  
+
+
+{\em Hint:} You can do so by modifying the following code,
+for example,
+<<P1 simple example, include = T>>=
+rm(list = ls())
+n=500
+iter = 1000
+mu = 0.1
+sig = 1
+p = 0.3
+c = 1.3
+m = c()
+p.sim = vector()
+c.sim = vector()
+set.seed(509213)
+for (i in c(1:iter)){
+ p1.sim.val = vector()
+ for(j in 1:n){
+   if(runif(1)<= p){
+     p1.sim.val[j] = rnorm(1,mu,sig)
+   } else{
+     p1.sim.val[j] = rnorm(1,mu,c*sig)
+   }
+ }
+ m = c(m, mean(p1.sim.val))
+ m1 = mean(abs(p1.sim.val - mean(p1.sim.val)))
+ m2 = mean((p1.sim.val - mean(p1.sim.val))^2)
+ c.curr = (sig*m1*sqrt(pi/2) - m2) / (sig^2-sig*m1*sqrt(pi/2))
+ c.sim[i] = c.curr
+ p.sim[i] = (m1*sqrt(pi/2)/sig - c.curr) / (1-c.curr)
+}
+
+q.p = quantile(p.sim,probs = c(0.025, 0.975))
+q.c = quantile(c.sim,probs = c(0.025, 0.975))
+q.m = quantile(m,probs = c(0.025,0.975))
+# q.s = quantile(s,probs = c(0.025,0.975))
+X = matrix(c(q.m,q.p, q.c),nrow=3,ncol=2,byrow = T)
+dimnames(X) = list(c("mu","p","c"),c("2.5 percentile",
+                                   "97.5 percentile"))
+library("knitr")
+kable(X,digits = 4)
+@
+
+
+\newpage
+\item Consider the $t$-distributed random variable $T = Z/\sqrt{Y/\nu}$,
+where $Z \sim{\mathcal N}(0,1)$ and $Y\sim {\rm Gamma}(\nu/2,1/2),\ \nu>0$ be two independent random variables.
+
+{\bf (a)} Assuming that $\nu>4$, compute the kurtosis of $T$, that is
+$$
+{\rm kurt}(T) = \E \left( \frac{(T-\mu)^4}{\sigma^4} \right),
+$$
+in terms of $\nu$, where $\mu = \E(T)$ and $\sigma^2 = {\rm Var}(T)$.
+
+\smallskip
+
+Note that $\mu =E[T] =   0$ and $\sigma^2 = Var(T) = \frac{\nu}{\nu-2}$. 
+
+Thus,
+\begin{align*}
+    E\left[\frac{(T-\mu)^4}{\sigma^4}\right] &=  E\left[\frac{(T)^4}{(\frac{\nu}{\nu-2})^2}\right]\\
+    &= (\frac{\nu-2}{\nu})^2 E[T^4]\\
+    &= (\frac{\nu-2}{\nu})^2 \frac{\Gamma(\frac{4+1}{2})\Gamma(\frac{\nu-4}{2})\nu^{\frac{4}{2}}}{\sqrt{\pi}\Gamma(\frac{\nu}{2})}\\
+    &= (\frac{\nu-2}{\nu})^2 \frac{\Gamma(\frac{5}{2})\Gamma(\frac{\nu-4}{2})\nu^{2}}{\sqrt{\pi}\Gamma(\frac{\nu}{2})}\\
+    &= (\frac{\nu-2}{\nu})^2 \frac{\frac{3}{2}\frac{1}{2}\Gamma(\frac{1}{2})\Gamma(\frac{\nu-4}{2})\nu^{2}}{\sqrt{\pi}\frac{\nu-2}{2}\frac{\nu-4}{2}\Gamma(\frac{\nu-4}{2})}\\
+    &= \frac{3(\nu-2)}{(\nu-4)}\\
+\end{align*}
+
+\medskip
+
+{\bf (b)} Suppose that $T_1,\dots,T_n$ are independent realizations form the above $t$-distribution model.
+Estimate $\nu$ if the sample kurtosis
+$$
+\frac{1}{n} \sum_{i=1}^n \left(\frac{ T_i -\overline T_n}{s_n} \right)^4 = 9,
+$$
+where $s_n^2 = n^{-1} \sum_{i=1}^n (T_i - \overline T_n)^2$.
+
+\smallskip
+
+
+
+\begin{align*}
+   \frac{3(\nu-2)}{(\nu-4)} &= 9 \\
+   3\nu-6&=9\nu-36\\
+   30&=6\nu\\
+   \nu&= 5 
+\end{align*}
+
+
+
+
+
+
+\newpage
+\item Let $p_1 = 0.2, p_2 = 0.5$ and $p_3 = 0.3$, consider the mixture density
+$$
+f(x) = p_1 f_1(x) + p_2 f_2(x) + p_3 f_3(x),
+$$
+where $f_i$ are ${\mathcal N}(\mu_i,\sigma_i^2),\ i=1,2,3$ densities.
+
+{\bf (a)} Set $\mu_i = i,\ i=1,2,3$, $\sigma_2 =1$ and $\sigma_1=\sigma_3=0.5$.  Simulate $n=500$ points from this mixture distribution
+and estimate the density $f(x)$ using a kernel density estimator with bandwidth $h$, for three values of $h$. 
+Plot on the same graph the resulting KDEs.
+<<p3a>>=
+p = c(0.2,0.5,0.3)
+mu = c(1:3)
+sig = c(0.5,1,0.5)
+nsam = 500
+set.seed(509231)
+sim.sam = vector()
+for(i in 1:nsam){
+  u = runif(1)
+  if(u<=0.2){
+    sim.sam[i] = rnorm(1, mean = mu[1], sd = sig[1])
+  } else if (0.2<u & u<=0.7){
+    sim.sam[i] = rnorm(1, mean = mu[2], sd = sig[2])
+  } else {
+    sim.sam[i] = rnorm(1, mean = mu[3], sd = sig[3])
+  }
+}
+#   p[1] * rnorm(nsam, mean = mu[1], sd = sig[1]) +
+#   p[2] * rnorm(nsam, mean = mu[2], sd = sig[2])+
+# p[3] * rnorm(nsam, mean = mu[3], sd = sig[3])
+library(kdensity)
+kde1 = kdensity(sim.sam , bw=0.2)
+kde2 = kdensity(sim.sam, bw = 0.4)
+kde3 = kdensity(sim.sam, bw = 0.8)
+x = seq(min(sim.sam)-1,max(sim.sam)+1, length=1e4)
+plot(x, kde1(x), type="l", col = 1, ylim = c(0,0.45),
+     main = "KDE with different bandwith")
+lines(x,kde2(x), col = 2)
+lines(x,kde3(x), col = 3)
+legend("topleft", legend=c("h=0.2", "h=0.4", "h=0.8"), 
+       col=c(1:3),lty=1)
+@
+
+
+
+
+{\bf (b)}  Knowing the true density $f$, write an R-function that takes as inputs the simulated data and the bandwidth $h$ 
+and computes exaclty the quantity
+$$
+ ISE(h) := \int_{\R} (\what f_h(x) - f(x))^2 dx.
+$$
+
+<<p3b>>=
+kde.est = function(x, d, h){
+  std.input = sapply(x, function(x){(x-d)/h})
+  # print(std.input)
+  return(1/(length(d)*h) * colSums(dnorm(std.input)))
+}
+
+compute.SE = function(x, hval, sim.data) {
+  cus.kde.est = kde.est(x, d=sim.sam, h=hval)
+  true.den.prob = p[1] * dnorm(x, mean = mu[1], sd = sig[1]) +
+  p[2] * dnorm(x, mean = mu[2], sd = sig[2]) +
+p[3] * dnorm(x, mean = mu[3], sd = sig[3])
+  return((cus.kde.est - true.den.prob)^2)
+}
+
+compute.ISE = function(hval, sim.data) {
+  return(integrate(compute.SE, lower= -Inf, upper = Inf, 
+                  hval = hval, sim.data = sim.data)[[1]])
+}
+# kde.est(1:3, sim.sam, 0.05)
+# res = integrate(compute.SE, lower= -Inf, upper = Inf, hval = 0.05, sim.data = sim.sam)
+@
+
+
+
+{\bf (c)} Plot the quantity $ISE(h)$ as a function of $h$ and determine visually the best value of $h= h^*$.  Plot the 
+resulting KDE $\what f_{h^*}(x)$ as a function of $x$.
+
+<<p3c>>=
+nstep = 2e2
+h = seq(0.02, 1, length = nstep)
+ISE = vector()
+for(i in 1:nstep){
+  ISE[i] = compute.ISE(h[i], sim.sam)
+  # print(i)
+}
+plot(h, ISE, type="l")
+h.star = h[which.min(ISE)];h.star
+abline(v=h.star, col="red")
+
+x = seq(min(sim.sam)-1,max(sim.sam)+1, length=1e3)
+f.hat.hstar = as.vector(sapply(x, kde.est, d=sim.sam, h=h.star))
+plot(x, p[1] * dnorm(x, mean = mu[1], sd = sig[1]) +
+  p[2] * dnorm(x, mean = mu[2], sd = sig[2]) +
+p[3] * dnorm(x, mean = mu[3], sd = sig[3]), col = "red",type="l", 
+     main = "True Density and KDE with h = h*", ylab = "density")
+lines(x, f.hat.hstar, col="black")
+legend("topleft", legend=c("KDE f.hat.h*(x)", "True Density f(x)" ), 
+       col=c("black","red"),lty=1)
+@
+
+
+
+
+
+
+\newpage
+\item Load the data set {\tt sp500\_full.cvs} found in the {\tt data} folder on Canvas.
+
+ {\bf (a)} Using maximum likelihood, fit the skewed t-distribution discussed in class to the 
+ daily returns (variable {\tt sprtrn}) of the sp500 time series.  Namely, consider the range of 
+ years 1962, 1963, ..., 2021. For the samples of daily returns corresponding to each year $y$ in this 
+ range, obtain $\hat \theta_{MLE}(y),\ y=1962,\ldots,2021$. Do so by using the {\tt optim}
+ function in R in two differnt ways (1) using the method "BFGS" and (2) via "Nelder-Mead".  
+ Compare the results and comment on the stability of each of the optimization methods.
+ 
+  Finally, using the Hessian estimate from the optimization routine, for each of the 4 parameters
+  $\mu,\sigma,\nu,$ and $\xi$, produce a plot of the point estimate along with point-wise 95\% 
+  confidence intervals as a function of time (years). \\
+
+<<p4a, warning=FALSE>>=
+p4data = read.csv("sp500_full.csv",header=TRUE)
+p4data$caldt<-as.Date(as.character(p4data$caldt),"%Y%m%d")
+
+dskew.t = function(x,xi=1,df=5){
+# Defining the skew t density
+  (dt(x*xi^(sign(x)),df=df)*2*xi/(1+xi^2))
+}
+nlog_lik_skew_t = function(theta){ # The negative log-likelihood
+  -sum(log(dskew.t((x-theta[1])/theta[2],
+  df=theta[3],xi=theta[4]))-log(theta[2]))
+}
+
+# change
+years = seq(1962,2021, 1)
+est.bfgs = matrix(data=NA, nrow = length(years), ncol = 4)
+est.nm = matrix(data=NA, nrow = length(years), ncol = 4)
+ci.lower.bfgs = matrix(data=NA, nrow = length(years), ncol = 4)
+ci.upper.bfgs = matrix(data=NA, nrow = length(years), ncol = 4)
+ci.lower.nm = matrix(data=NA, nrow = length(years), ncol = 4)
+ci.upper.nm = matrix(data=NA, nrow = length(years), ncol = 4)
+con.bfgs = vector()
+con.nm = vector()
+for(i in 1:length(years)){
+  startyear = paste0(years[i],"-01-01")
+  endyead = paste0(years[i]+1,"-01-01")
+  idx1 =which(p4data$caldt>=startyear & 
+                p4data$caldt<endyead & !is.na(p4data$sprtrn))
+  curyeardf = p4data[idx1,]
+
+  x = curyeardf$sprtrn
+  start = c(mean(x),sd(x),5,5)
+  par.names = c("mu","sig","df","xi")
+  fit_st.BFGS = optim(start, nlog_lik_skew_t, hessian=T,method="BFGS")
+  est.bfgs[i,] = fit_st.BFGS$par
+  Sig.BFGS = solve(fit_st.BFGS$hessian)
+  alpha = 0.05
+  z.alpha.2 = qnorm(1-alpha/2)
+  se.bfgs = sqrt(abs(diag(Sig.BFGS)))
+  ci.lower.bfgs[i,] = fit_st.BFGS$par - z.alpha.2*se.bfgs
+  ci.upper.bfgs[i,] = fit_st.BFGS$par + z.alpha.2*se.bfgs
+  con.bfgs[i] =fit_st.BFGS$convergence
+
+  # , control = c(maxit=700)
+  fit_st.NM = optim(start, nlog_lik_skew_t, hessian=T)
+  est.nm[i,] = fit_st.NM$par
+  Sig.NM = solve(fit_st.NM$hessian)
+  alpha = 0.05
+  z.alpha.2 = qnorm(1-alpha/2)
+  se.nm = sqrt(abs(diag(Sig.NM)))
+  ci.lower.nm[i,] = fit_st.NM$par - z.alpha.2*se.nm
+  ci.upper.nm[i,] = fit_st.NM$par + z.alpha.2*se.nm
+  con.nm[i] =fit_st.NM$convergence
+  # print(i)
+}
+
+@
+
+To compare the estimates yield by the two different optimization methods:
+<<p4a compare opt>>=
+print(table(con.bfgs))
+print(table(con.nm))
+
+nloglike.bfgs.est = vector()
+nloglike.nm.est = vector()
+for(i in 1:length(years)){
+  nloglike.bfgs.est[i] = nlog_lik_skew_t(est.bfgs[i,])
+  nloglike.nm.est[i] = nlog_lik_skew_t(est.nm[i,])
+}
+
+diff.ll = nloglike.bfgs.est - nloglike.nm.est 
+length(diff.ll[diff.ll < -0.0001]) / length(diff.ll)
+
+@
+
+From the converges table, 0 indicates converged, and 1 indicates maximum iteration is reached such that convergence is unknown. All estimates by BFGS are converged for sure, but only 2/3 of the estimates by Nelder-Mead are converged for sure. 
+
+Also, if we increase the maximum iteration for Nelder-Mead method, it is highly likely that it will report that the Hessian matrix is singular. 
+
+\smallskip
+
+Then, since the objective is to find the maximum likelihood estimator, we can compute the negative log likelihood to evaluate the performance. Note that the lower the negative log likelihood means the higher the likelihood. The probability that BFGS estimators has a lower negative log likelihood than the Nelder-Mead estimators is 0.3, so it is more likely that the Nelder-Mead estimators have a higher likelihood which would be a better estimator.  
+
+
+<<p4a plot of parameters>>=
+para.name = c("mu","sig","nu","xi")
+# Plot 4 parameters with CI
+par(mfrow=c(4,2))
+for(i in 1:4){
+  plot(years,est.bfgs[,i], pch = 19, ylim = c(min(ci.lower.bfgs[,i]), 
+                                              max(ci.upper.bfgs[,i])), 
+       main = paste("Estimate for",para.name[i], "by BFGS"), 
+       ylab = para.name[i])
+  segments(x0 = years, x1 = years, y0 = ci.lower.bfgs[,i], 
+           y1 = ci.upper.bfgs[,i], col = "red", lwd = 2)
+
+  plot(years,est.nm[,i], pch = 19, ylim = c(min(ci.lower.nm[,i]), 
+                                            max(ci.upper.nm[,i])), 
+       main = paste("Estimate for",para.name[i], "by Nelder-Mead"), 
+       ylab = para.name[i])
+  segments(x0 = years, x1 = years, y0 = ci.lower.nm[,i], 
+           y1 = ci.upper.nm[,i], col = "red", lwd = 2)
+}
+
+@
+
+
+
+ {\bf (b)} Consider the plot the estimated degrees of freedom parameter $\hat \nu(y)$ 
+ as a function of time $y$ (in years) from part (a). Which years $y$ seem to have relatively 
+ heavy-tailed returns?  Are there any years for which the estimated model has infinite variance?  
+ Explain and plot the time series of the daily returns for one of these years.\\
+
+<<p4b>>=
+par(mfrow=c(2,1))
+plot(years,est.bfgs[,3], pch = 19, ylim = c(min(ci.lower.bfgs[,3]), 
+                                            max(ci.upper.bfgs[,3])), 
+     main = paste("Estimate for",para.name[3], "by BFGS"), 
+     ylab = para.name[3])
+segments(x0 = years, x1 = years, y0 = ci.lower.bfgs[,3], 
+         y1 = ci.upper.bfgs[,3], col = "red", lwd = 2)
+abline(h = 7, col = "green")
+abline(h = 2, col="blue")
+
+plot(years,est.nm[,3], pch = 19, ylim = c(min(ci.lower.nm[,3]), 
+                                          max(ci.upper.nm[,3])), 
+     main = paste("Estimate for",para.name[3], "by Nelder-Mead"), 
+     ylab = para.name[3])
+segments(x0 = years, x1 = years, y0 = ci.lower.nm[,3], 
+         y1 = ci.upper.nm[,3], col = "red", lwd = 2)
+abline(h = 7, col = "green")
+abline(h = 2, col="blue")
+
+
+#Relatively heavy tail
+
+cat(unique(c(years[est.nm[,3] <=5 ], years[est.bfgs[,3] <=5 ] )), sep = ", ")
+cat(unique(c(years[est.nm[,3] <=2 ], years[est.bfgs[,3] <=2 ] )), sep = ", ")
+
+# intersect(years[est.nm[,3] <=5 ] , years[est.bfgs[,3] <=5 ] )
+@
+
+The green line corresponds to $\nu = 5$. Years 1963, 1965, 1984, 1987, 1998, 2004, 2006, 2008, 2011, 2017, 2018, 2020, 1970, 1986, 1988, 1989, 2007, 2009, 2014, 2016, 2019 seem to have relatively heavy-tailed returns since their degree of freedom is estimated to be less than or equal to 5 by at least one of the methods.
+
+\smallskip 
+
+The blue line corresponds to $\nu = 2$. Years 1963, 1965, 2020
+ seem to have infinite variance since their degree of freedom is estimated to be less than or equal to 2 by at least one of the methods.
+
+<<p4b time series plot>>=
+startyear = paste0(1965,"-01-01")
+endyead = paste0(1965+1,"-01-01")
+idx1 =which(p4data$caldt>=startyear & p4data$caldt<endyead)
+p4bdf = p4data[idx1,]
+par(mfrow=c(1,1))
+plot(p4bdf$caldt , p4bdf$sprtrn, type="l", 
+     main = "Time series of daily return for 1965", 
+     xlab = "Year of 1965", ylab = "Daily return")
+@
+
+
+
+ {\bf (c)} Consider the confidence intervals for the skewness parameter estimates obtained in part 
+ {\bf (a)}. Identify during which years (if any) the skewness paramter $\xi$ is likley to be
+ significantly different from $1$.  Ignoring multiple testing issues, test the corresponding 
+ (two-sided) hypothesis  at a level of 5\%.
+
+ Plot the kernel density estimator for the daily returns for one of these ``skewed'' years 
+ and on the same plot display (in different line-style/color) the density of the estimated skewed 
+ t-model.  
+
+<<p4c>>=
+par(mfrow=c(2,1))
+plot(years,est.bfgs[,4], pch = 19, ylim = c(min(ci.lower.bfgs[,4]), 
+                                            max(ci.upper.bfgs[,4])), 
+     main = paste("Estimate for",para.name[4], "by BFGS"), 
+     ylab = para.name[4])
+segments(x0 = years, x1 = years, y0 = ci.lower.bfgs[,4], 
+         y1 = ci.upper.bfgs[,4], col = "red", lwd = 2)
+abline(h = 1, col = "blue")
+
+plot(years,est.nm[,4], pch = 19, ylim = c(min(ci.lower.nm[,4]), 
+                                          max(ci.upper.nm[,4])), 
+     main = paste("Estimate for",para.name[4], "by Nelder-Mead"), 
+     ylab = para.name[4])
+segments(x0 = years, x1 = years, y0 = ci.lower.nm[,4], 
+         y1 = ci.upper.nm[,4], col = "red", lwd = 2)
+abline(h = 1, col = "blue")
+
+cat(unique(sort(c(years[ci.lower.bfgs[,4]>1], years[ci.lower.nm[,4]>1], 
+             years[ci.upper.nm[,4]<1],years[ci.upper.bfgs[,4]<1]))), 
+    sep = ", ")
+# intersect(c(years[ci.lower.bfgs[,4]>1], years[ci.upper.bfgs[,4]<1]),
+#           c(years[ci.lower.nm[,4]>1], years[ci.upper.nm[,4]<1] ))
+@
+
+The blue line corresponds to $\xi = 1$. The skewness parameter $\xi$ for years 1963, 1964, 1969, 1974, 1982, 1984, 1985, 2007, 2013, 2017 is likely to be significantly different from 1 by at least one of the estimators. 
+
+
+<<p4c dist plot>>=
+skewy = 1984
+yidx = which(years == skewy)
+startyear = paste0(skewy,"-01-01")
+endyead = paste0(skewy+1,"-01-01")
+idx1 =which(p4data$caldt>=startyear & p4data$caldt<endyead)
+p4cdf = p4data[idx1,]
+kde = kdensity(p4cdf$sprtrn)
+par(mfrow=c(1,1))
+plot(kde, ylim = c(0, 60))
+x= seq(min(p4cdf$sprtrn)-0.2, max(p4cdf$sprtrn)+.2, length=1e3)
+lines(x, dskew.t((x- est.bfgs[yidx, 1])/ est.bfgs[yidx, 2],
+                 est.bfgs[yidx, 4],
+                 df = est.bfgs[yidx, 3]) / est.bfgs[yidx, 2], col = "red")
+legend("topright", legend=c("KDE of daily return for year 1984", 
+                                "Density of estimated skewed t-model"), 
+       col=c(1:3),lty=1, cex=0.8)
+@
+
+\end{enumerate}
+
+
+\end{document}

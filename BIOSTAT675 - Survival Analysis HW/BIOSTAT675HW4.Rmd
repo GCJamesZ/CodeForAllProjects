@@ -1,0 +1,185 @@
+---
+title: "BIOSTAT675HW4"
+author: "Mingyu Zhong"
+date: "2023-03-24"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(lmtest)
+```
+
+## Problem 1
+```{r}
+rm(list = ls())
+dat = haven::read_sas("anemia2.sas7bdat")
+dat$GVHD = as.factor(dat$GVHD)
+dat$LAF = as.factor(dat$LAF)
+dat$CSP_MTX = as.factor(dat$CSP_MTX)
+```
+### Part (a)
+```{r}
+# Part a
+p1.fit.a = coxph(Surv(obs_time , GVHD == 1) ~ CSP_MTX + LAF + age, data = dat)
+summary(p1.fit.a)
+```
+The hazard of the subject in the treatment group (CSP_MTX) is 0.24747 times of the hazard of the subject in the non-treatment group.
+
+The hazard of the subject in the LAF group is 0.58103 times of the hazard of the subject in the non-LAF group.
+
+The hazard of the subject with 1 unit increase in age is 1.06320 times of the subject with previous/original age. 
+
+### Part (b)
+```{r}
+# Part b
+p1.fit.b = coxph(Surv(obs_time , GVHD == 1) ~ CSP_MTX + LAF + I(age/5), 
+                 data = dat)
+knitr::kable(rbind(summary(p1.fit.a)$coefficients,summary(p1.fit.b)$coefficients))
+```
+The top table is the model estimates for part (a), and the bottom table is the model estimates for part (b).
+
+Comparing the parameter estimate to Part (a), the estimate for CSP_MTX and LAF are the same. The only changed estimate in model of Part (b) is age which is 5 times of the age estimates in Part (a). 
+
+
+### Part (c)
+```{r}
+# Part c
+p1.fit.c = coxph(Surv(obs_time , GVHD == 1) ~ LAF + CSP_MTX*age, data = dat)
+summary(p1.fit.c)
+
+ts.W = (coef(p1.fit.c)["CSP_MTX1:age"]/
+          summary(p1.fit.c)$coefficients["CSP_MTX1:age" , "se(coef)"])^2
+1 - pchisq(ts.W, 1)
+```
+
+The p-value is 0.03175068 < 0.05, so we will reject the null hypothesis at the general $\alpha= 0.05$ level of significance which means the treatment effect may be different for subjects of different ages. 
+
+
+
+### Part (d)
+```{r}
+p1.fit.d.inter = coxph(Surv(obs_time , GVHD == 1) ~ LAF + CSP_MTX*age, data = dat)
+# summary(p1.fit.d.inter)
+p1.fit.d.nointer = coxph(Surv(obs_time , GVHD == 1) ~ LAF + CSP_MTX+age, data = dat)
+# summary(p1.fit.d.nointer)
+ll.beta.hat = logLik(p1.fit.d.inter)
+ll.beta.hat.H = logLik(p1.fit.d.nointer)
+ts.LR = 2*(ll.beta.hat - ll.beta.hat.H)
+1 - pchisq(ts.LR, 1)
+```
+
+The p value of the likelihood ratio test is 0.02308286 < 0.05 for the general level of significance $\alpha=0.05$, so we will reject the null hypothesis which means the treatment effect may be different for subjects of different ages. 
+
+The result of the likelihood ratio test is the same as the result of the Wald test. 
+
+
+
+### Part (e)
+
+For 1 unit increase in age in the treatment group, the hazard would be $exp(0.08537-0.11756) = 0.9683226$ times of the previous/original age. 
+
+For 1 unit increases in age in the non-treatment group, the hazard would be $exp(0.08537) = 1.08912$ times of the previous/original age.
+
+If the subject is in the treatment group, the hazard would be $exp(1.38421-0.11756 * age)$ times of the subjects in the non-treatment group. 
+
+If the subject is in the LAF group, the hazard would be $exp(1.38421-0.68505)=2.012062$ times of the subjects in the non-LAF group.
+
+### Part (f)
+```{r}
+p1.fit.f = coxph(Surv(obs_time , GVHD == 1) ~ strata(I(age > 21)) + CSP_MTX + LAF, data = dat)
+summary(p1.fit.f)
+
+base = basehaz(p1.fit.f, centered=F)
+plot(base$time[base$strata == "I(age > 21)=TRUE"], 
+     log(base$hazard[base$strata == "I(age > 21)=TRUE"]), 
+     type = "l", ylab = "log hazard", xlab = "time",
+     main = "Hazard function stratified by age > 21")
+lines(base$time[base$strata == "I(age > 21)=FALSE"], 
+     log(base$hazard[base$strata == "I(age > 21)=FALSE"]), col = "red")
+
+legend("bottomright", legend = c("I(age > 21)", "I(age <= 21)"), lty = 1, col = c("black","red"))
+
+```
+
+From the graph, the curves are not parallel since the difference between the two curves is not constant which means the effect of age may not be linear. 
+
+
+\newpage
+
+## Problem 2
+### Part (a)
+
+First, we can find the hazard rate for age = 40 at time = 14 while keeping other covariates fixed,
+\begin{align*}
+    \frac{\lambda(t, age = 40)}{\lambda(t, age = 30)} &= \frac{\lambda_0(t) \exp(MTX*-1.396+LAF * -0.543*0.061*40)}{\lambda_0(t) \exp(MTX*-1.396+LAF * -0.543*0.06129*30)}\\
+    \lambda(t, age = 40) &= \exp(0.061*10) * \lambda(t, age = 30)
+\end{align*}
+
+Then, we can find the survival function at time = 14 for age = 40
+\begin{align*}
+    S(14, age = 40) &= exp(-\int_0^{14} \lambda(t, age = 40)\,dt)\\
+    &= exp(-\int_0^{14} exp(0.6129) \lambda(t, age = 30)\,dt)\\
+    &= exp(-\int_0^{14} \lambda(t, age = 30)\,dt)^{exp(0.6129)}\\
+    &= S(14, age = 30)^{exp(0.6129)}\\    
+    &= 0.95^{exp(0.6129)}\\
+    &= 0.90967
+\end{align*}
+
+\medskip
+
+### Part (b)
+Similar to part (a), $\lambda(t, age=50) = exp(25*0.06129) * \lambda(t,age=25)$.
+
+Then, $S(56, age = 50) = S(56, age = 25)^{exp(1.53225)}$ or $S(56, age = 50) = exp(-\int_0^{56} \lambda_0(t)\exp(\hat{\beta}^TZ_i))$.
+
+Since we do not know the value of survival function at time = 56 and age = 25 which is $S(56, age=25)$ or the values for the other covariates including CSP\_MTX and LAF which is $Z_i$, it is impossible to determine $S(56, age=50)$ with only the information $S(28,age=25) = 0.9$.
+
+
+
+
+
+
+
+
+## Problem 3
+
+The hazard function for Weibull distribution is $\lambda_{ij}(t) = \gamma_j \lambda_j t^{\gamma_j -1}$. 
+
+The hazard ratio is
+\begin{align*}
+    HR(t) &= \frac{\lambda_{i1}(t)}{\lambda_{i0}(t)}\\
+    &= \frac{\gamma_1 \lambda_1 t^{\gamma_1 -1}}{\gamma_0 \lambda_0 t^{\gamma_0 -1}}\\
+    &= \frac{\gamma_1 \lambda_1 }{\gamma_0 \lambda_0 } t^{\gamma_1 -\gamma_0}
+\end{align*}
+
+Notice that the hazard ratio depends on $t$ since it involves $t^{\gamma_1 -\gamma_0}$. Thus, the Weibull model is not a proportional hazards model if $\gamma_1  \ne \gamma_0$, and the Weibull model is a proportional hazards model if $\gamma_1  = \gamma_0$. 
+
+
+
+\newpage
+
+## Problem 4
+### Part (a)
+```{r}
+dat.p4 = dat
+dat.p4$obs_time = ceiling(dat.p4$obs_time / 7)
+p4.fit.a = coxph(Surv(obs_time , GVHD == 1) ~ CSP_MTX + LAF + age, 
+                 data = dat.p4)
+knitr::kable(rbind(round(summary(p4.fit.a)$coefficients, 5),
+                   round(summary(p1.fit.a)$coefficients,5)))
+```
+
+The top table is the coefficients for the parameter estimate in weeks time scale, and the bottom table is the coefficients for the parameter estimate in days time scale.
+
+From the table, the coefficient estimates and the p-values are barely changed, and the conclusion about the significance of the parameters that we had for Question 1 still remain the same.
+
+
+### Part (b)
+```{r}
+p4.fit.b = coxph(Surv(obs_time , GVHD == 0) ~ CSP_MTX + LAF + age, 
+                 data = dat.p4)
+summary(p4.fit.b)
+```
+Based on the result of the model, we do not have evidence that the independence censoring assumption is violated. At the general level of significance $\alpha = 0.05$, we will conclude that none of the covariates could be used to predict the censoring, but some of the covariates are useful to predict the time to failure from the models in Question 1. Therefore, since the censoring time is independent of the covariates, the censoring is also independent of the failure. 

@@ -1,0 +1,724 @@
+---
+title: "STATS551FinalProject"
+author: "Mingyu Zhong"
+date: "2022-12-10"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(Boom)
+library(glmnet)
+```
+
+
+#  Data Preprocessing
+
+```{r}
+# Initialize Environment
+# setwd("Z:/CurrQuarter/STATS 551/Final Project/pubg-finish-placement-prediction")
+setwd("D:/University of Michigan/CurrQuarter/STATS 551/Final Project/pubg-finish-placement-prediction")
+rm(list=ls())
+```
+
+```{r, eval = F}
+# load full training data
+raw.data = read.csv("train_V2.csv")
+oriSamSize = nrow(raw.data)
+full.data = raw.data
+
+full.data = full.data %>% filter(matchType == "duo")
+full.data = full.data %>% mutate(ngid = paste0(matchId, groupId)) 
+
+
+range(full.data$winPlacePerc)
+full.data = full.data %>% select(-c(Id, matchType,matchId,groupId))
+
+full.data = full.data %>% 
+  group_by(ngid) %>% 
+  summarise(across(everything(), mean))
+
+
+full.data = full.data %>% select(-c(ngid))
+```
+
+## Checking distribution of Predictors
+```{r,eval = F}
+trans.data  = full.data
+inverseTrans = c(17)
+needLogTransform = c(1:6,9:11,16,18:23)
+needSecondLog = c(1,4:6,9,10,16,23)
+needNegCorrect = c(13,14)
+
+# Before Transform
+par(mfrow=c(5,5))
+for(i in 1:24){
+  boxplot(full.data[,i], main = colnames(full.data)[i])
+}
+
+#After Transform
+par(mfrow=c(5,5))
+for(i in 1:24){
+  if(i %in% needLogTransform){
+    trans.data[,i] = log(full.data[,i] + 1 )
+  }
+  if(i %in% needSecondLog){
+    trans.data[,i] = log(trans.data[,i]+1)
+  }
+  if(i %in% inverseTrans){
+    trans.data[,i] = 1/(full.data[,i]+1)
+  }
+  if(i %in% needNegCorrect){
+    trans.data[,i] = log(sqrt(max(full.data[,i]+1)-full.data[,i]))
+  }
+  boxplot(trans.data[,i], main = colnames(full.data)[i])
+}
+
+full.data = trans.data
+```
+
+
+```{r, eval = F}
+# Split Train and Test Data
+set.seed(551)
+train.index = sample(seq(1,nrow(full.data)), size = 6*nrow(full.data)/10)
+train.data = full.data[train.index,]
+test.data = full.data[-train.index,]
+
+# Select useful variables
+str(train.data)
+d = data.frame(train.data)
+# non_numeric_columns <- sapply(d, is.numeric)
+# colnames(d)[!non_numeric_columns]
+d = d %>% select(-c(Id, groupId, matchId, matchType))
+y = d$winPlacePerc
+
+# Standardize Predictors
+td.mean = vector()
+td.std = vector()
+for(i in 1:(ncol(d)-1)){
+  td.mean[i] = mean(d[,i])
+  td.std[i] = sd(d[,i])
+  d[,i] =  (d[,i] - td.mean[i]) / td.std[i]
+}
+
+# test.data = test.data %>% select(-c(Id, groupId, matchId, matchType))
+str(test.data)
+for(i in 1:(ncol(d)-1)){
+  test.data[,i] = (test.data[,i]- td.mean[i]) / td.std[i]
+}
+
+# Save to a file for easy import
+saveRDS(d, file = "split_train_dataset.rds")
+saveRDS(test.data, file = "split_test_dataset.rds")
+```
+
+
+
+
+
+
+
+\newpage
+## Load Training Data
+```{r}
+rm(list=ls())
+tdata = readRDS("split_train_dataset.rds")
+```
+
+## Plot and Transform the Distribution of Y 
+```{r}
+y= as.matrix(tdata$winPlacePerc)
+one.index = which(y==1)
+second.highest = sort(unique(y), decreasing = T)[2]
+remake.one = runif(length(one.index), min = second.highest+0.0001,max= 1-0.0001)
+y[one.index] = remake.one
+zero.index = which(y==0)
+second.lowest = sort(unique(y))[2]
+remake.zero = runif(length(zero.index), min = 0+0.0001,max= second.lowest-0.0001)
+y[zero.index] = remake.zero
+y=qnorm(y)
+hist(tdata$winPlacePerc, main = "Distribution of Y Before Transformation", freq = F)
+hist(y, main = "Distribution of Y Before Transformation", freq = F)
+```
+
+
+
+## Model Selection with Gibbs
+```{r, eval = F}
+set.seed(5511)
+p = ncol(tdata)
+# Model.Selection.Gibbs = function(nruns, S){
+nruns = 300
+S=1600
+runs.Z = matrix(nrow=p, ncol=0)
+runs.beta = matrix(nrow=p, ncol=0)
+for(nrun in 1:nruns){
+  # reformat y 
+  y= as.matrix(tdata$winPlacePerc)
+  one.index = which(y==1)
+  second.highest = sort(unique(y), decreasing = T)[2]
+  remake.one = runif(length(one.index), min = second.highest+0.0001,max= 1-0.0001)
+  y[one.index] = remake.one
+  zero.index = which(y==0)
+  second.lowest = sort(unique(y))[2]
+  remake.zero = runif(length(zero.index), min = 0+0.0001,max= second.lowest-0.0001)
+  y[zero.index] = remake.zero
+  y=qnorm(y)
+  
+  z = as.matrix(rep(1,p+1))
+  X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+  X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+  
+  # downsample
+  samples.index = sample(seq(1,nrow(X)), size = nrow(X)/200)
+  X = X[samples.index,]
+  y = y[samples.index]
+  g=nrow(X)
+  n=nrow(X)
+  v0 = 2
+  sigma0.2 = var(tdata$winPlacePerc)
+  
+  lpy.X = function(y,X,g=length(y),nu0=2,s20 = try(summary(lm(y~-1+X))$sigma^2,silent=TRUE)){
+    n = dim(X)[1]
+    p=dim(X)[2]
+    if(p==0){
+      Hg=0
+      S20 = mean(y^2)
+    }
+    if(p>0){
+      Hg = (g/(g+1)) * X %*% solve(t(X)%*%X)%*%t(X)
+    }
+    SSRg = t(y)%*%(diag(1,nrow=n) -Hg)%*% y 
+    -0.5 *(n*log(pi)+p*log(1+g)+(nu0+n)*log(nu0*s20+SSRg) -nu0*log(nu0*s20))+lgamma((nu0+n)/2) - lgamma(nu0/2)
+  }
+  
+  z = rep(1,dim(X)[2])
+  lpy.c = lpy.X(y,X[,z==1,drop=FALSE])
+  # S=40
+  Z = matrix(NA,S,dim(X)[2])
+  # sigma2 = vector()
+  beta = matrix(0,nrow=p,ncol=S)
+  
+  #Gibbs sampler
+  set.seed(5511)
+  for(s in 1:S){
+    if (det(t(X)%*%X) <= 0.0001) {
+      # Skip the current iteration of the loop
+      next
+    }
+    for(j in sample(1:dim(X)[2])){
+      zp = z
+      zp[j]=1-zp[j]
+      lpy.p = lpy.X(y,X[,zp==1,drop=FALSE])
+      r=(lpy.p-lpy.c)*(-1)^(zp[j]==0)
+      z[j]=rbinom(1,1,1/(1+exp(-r)))
+      if(z[j]==zp[j]){lpy.c = lpy.p}
+    }
+    Z[s,] = z
+    currZ = Z[s,]
+    
+    Xz = X[,currZ==1,drop=FALSE]
+    v0 = 2
+    sigma0.2 = 1
+    if (det(t(Xz)%*%Xz) <= 0.0001) {
+      # Skip the current iteration of the loop
+      next
+    }
+    
+    m = g/(g+1) * (solve((t(Xz)%*%Xz))%*%t(Xz) %*% y)
+    SSRg = t(y) %*% (diag(nrow(X)) - g/(g+1) * Xz %*% solve((t(Xz)%*%Xz))%*%t(Xz)) %*% y
+    
+    invga.shape = (v0+n) /2
+    invga.rate = (v0+sigma0.2 + SSRg)/2
+    
+    sim.sigma = rinvgamma(1, invga.shape, invga.rate)
+    # sigma2[s] = sim.sigma
+    V = g/(g+1) * (sim.sigma * solve((t(Xz)%*%Xz)))
+    sim.beta = mvtnorm::rmvnorm(1, mean = m, sigma = V)
+    beta[which(currZ ==1), s] = t(sim.beta)
+  }
+  
+  runs.beta = cbind(runs.beta,beta)
+  runs.Z =  cbind(runs.Z,t(Z))
+  print(nrun)
+}
+
+# saveRDS(runs.beta, file = "beta_gibs.rds")
+# saveRDS(runs.Z, file = "Z_gibs.rds")
+
+# for(i in 1:p){
+#   beta_j = beta[i,]
+#   print(length(beta_j[beta_j != 0]) / S)
+#   print(cat("The 95% CI for beta_",i,"is",quantile(beta_j, 0.05/150),quantile(beta_j, (1-0.05/150))))
+# }
+
+# 25:40 - 248.17 
+# 100:500 - 142
+# 200:1000 - 89.98 
+# 200:1100 - 95.84 
+# 230:1200 - 87.77
+```
+
+
+# Metropolis Hastings algorithm
+```{r, eval = F}
+set.seed(5512)
+y= as.matrix(tdata$winPlacePerc)
+one.index = which(y==1)
+second.highest = sort(unique(y), decreasing = T)[2]
+remake.one = runif(length(one.index), min = second.highest+0.0001,max= 1-0.0001)
+y[one.index] = remake.one
+zero.index = which(y==0)
+second.lowest = sort(unique(y))[2]
+remake.zero = runif(length(zero.index), min = 0+0.0001,max= second.lowest-0.0001)
+y[zero.index] = remake.zero
+y=qnorm(y)
+
+p = ncol(tdata)
+z = as.matrix(rep(1,p+1))
+X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+
+
+ptm <- proc.time()
+sigma2 = var(y)
+beta.now = c(rnorm(p,0,2))
+gamma.now = rep(1,p)
+sigma2.now = 1/rgamma(1, shape = 1, rate = 1*var(y))
+sigma2.sim = vector()
+count.sigma2 = 0
+
+S = 250000
+gammas.sim = rep(" ", S)
+gamma.sim = matrix(0, ncol = S, nrow=p)
+beta.sim = matrix(0, ncol = S, nrow=p)
+beta.gamma.sim = matrix(0, ncol = S, nrow=p)
+count.beta = 0 
+count = 0
+for(s in 1:S){
+  if(s%%(S/10) == 1){print(s)}
+  
+  #update gamma
+  theta.now = X[, gamma.now==1, drop=F] %*% beta.now[gamma.now==1]
+  ln.likelihood.now = sum(dnorm(y, theta.now , sqrt(sigma2.now), log = T))
+    # - sum((y-theta.now)^2) / (2*sigma2.now)
+  gamma.new = gamma.now
+  index = seq(1, p)
+  sam.index = sample(index, size=1)
+  gamma.new[sam.index] = 1-gamma.new[sam.index]
+
+  theta.new = X[, gamma.new==1, drop=F] %*% beta.now[gamma.new==1]
+  ln.likelihood.new = sum(dnorm(y, theta.new , sqrt(sigma2.now), log = T))
+  # log(2*pi*sigma2.now) - sum((y-theta.new)^2) / (2*sigma2.now)
+  denom = ln.likelihood.now 
+  num = ln.likelihood.new
+  
+  if(runif(1)<exp(num - denom) ){
+    count = count +1
+    gamma.now = gamma.new
+  }
+  
+  gammas.sim[s] = paste(gamma.now,collapse=' ')
+  gamma.sim[,s] = gamma.now
+  
+  #update beta
+  prior.prob.now = sum(log(dnorm(beta.now,0,2)))
+  theta.now = X[, gamma.now==1, drop=F] %*% beta.now[gamma.now==1]
+  ln.likelihood.now = sum(dnorm(y, theta.now , sqrt(sigma2.now), log = T))
+    # - sum((y-theta.now)^2) / (2*sigma2.now)
+  
+  beta.new = mvtnorm::rmvnorm(1, mean = beta.now, sigma = sigma2.now*solve(t(X)%*%X))
+  theta.new = X[, gamma.now==1, drop=F] %*% beta.new[gamma.now==1]
+  ln.likelihood.new = sum(dnorm(y, theta.new , sqrt(sigma2.now), log = T))
+    # - sum((y-theta.new)^2) / (2*sigma2.now)
+  prior.prob.new = sum(log(dnorm(beta.new,0,2)))
+  
+  denom = ln.likelihood.now + prior.prob.now
+  num = ln.likelihood.new + prior.prob.new
+  
+  if(runif(1)<exp(num - denom) ){
+    count.beta = count.beta +1
+    beta.now = beta.new
+    theta.now = theta.new
+  }
+  beta.sim[,s] = beta.now
+  
+  betaWIthGamma = rep(0,p)
+  betaWIthGamma[which(gamma.now==1)] = beta.now[which(gamma.now==1)]
+  beta.gamma.sim[,s] = betaWIthGamma
+  
+  #update sigma
+  SSRg = sum((y-theta.now)^2)
+  prior.prob.sigma2.now = log(dgamma(1/sigma2.now ,shape = 1, rate = var(y)))
+  ln.likelihood.now = sum(dnorm(y, theta.now , sqrt(sigma2.now), log = T))
+    # - sum((y-theta.now)^2) / (2*sigma2.now)
+  
+  sigma2.new = 1/rgamma(1, shape = 1, rate = sigma2.now )
+  prior.prob.sigma2.new = log(dgamma(1/sigma2.new ,shape = 1, rate = var(y)))
+  ln.likelihood.new = sum(dnorm(y, theta.now , sqrt(sigma2.new), log = T))
+    # - sum((y-theta.now)^2) / (2*sigma2.new)
+  denom = ln.likelihood.now + prior.prob.sigma2.now + log(dgamma(1/sigma2.now, shape = 1, rate = sigma2.new))
+  num = ln.likelihood.new + prior.prob.sigma2.new + log(dgamma(1/sigma2.new, shape = 1, rate = sigma2.now))
+  if(runif(1)<exp(num - denom) ){
+    count.sigma2 = count.sigma2 +1
+    sigma2.now = sigma2.new
+  }
+  sigma2.sim[s] = sigma2.now
+}
+proc.time() - ptm
+# 0.052928 sec / iteration
+print(count / S)
+print(count.beta / S)
+print(count.sigma2 / S)
+# saveRDS(beta.gamma.sim, file = "beta_mh.rds")
+# saveRDS(gamma.sim, file = "gamma_mh.rds")
+```
+
+
+
+
+
+
+
+
+
+
+## Load Gibs and MH data
+
+```{r}
+rm(list=ls())
+tdata = readRDS("split_train_dataset.rds")
+
+# Load Gibbs Result
+runs.beta = readRDS("beta_gibs.rds")
+runs.Z = readRDS("Z_gibs.rds")
+
+# Load MH Result
+beta.gamma.sim = readRDS("beta_mh.rds")
+gamma.sim = readRDS("gamma_mh.rds")
+
+p = ncol(tdata)
+X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+y= as.matrix(tdata$winPlacePerc)
+
+compare.df = data.frame()
+```
+
+
+
+
+
+# Result of Gibs
+
+## 1.Examine Convergence of Gibbs Sequence
+```{r}
+par(mfrow = c(5,5))
+for (i in 1:ncol(X)) {
+  plot(1:ncol(runs.beta), runs.beta[i,], 'l', main = sprintf("Gibbs Iterations for beta_j = %d", i))
+}
+```
+
+## 2.Print the model Probability by Gibbs
+```{r, eval = F}
+Zcomb = vector()
+S = ncol(runs.Z)
+for(i in 1:S){
+  Zcomb[i]= paste(runs.Z[,i],collapse=' ')
+}
+
+Zcomb = as.data.frame(table(Zcomb))
+Zcomb = Zcomb[order(Zcomb$Freq, decreasing = T),]
+Zcomb$Freq = round(Zcomb$Freq / sum(Zcomb$Freq), 3)
+
+highest_comb_gibs = vector()
+second_comb_gibs = vector()
+print(Zcomb)
+for(i in 1:S){
+  if(paste(runs.Z[,i],collapse=' ') == Zcomb[1,]$Zcomb){
+    highest_comb_gibs = runs.Z[,i]
+  }
+  if(paste(runs.Z[,i],collapse=' ') == Zcomb[2,]$Zcomb){
+    second_comb_gibs = runs.Z[,i]
+  }
+}
+print(colnames(X)[which(highest_comb_gibs %% 2 == 1)])     # top model
+print(colnames(X)[which(second_comb_gibs %% 2 == 1)]) # second model
+```
+
+
+
+## 3. Rank of coefficient magnitude by Gibbs
+```{r}
+gib.beta.mean = vector()
+for(i in 1:p){
+  gib.beta.mean[i] = mean(runs.beta[i,])
+}
+gibs.coeff = cbind(gib.beta.mean=abs(round(gib.beta.mean,3)), name =  c("intercept",colnames(tdata[1:24]))) %>% data.frame
+gibs.coeff = gibs.coeff[order(gibs.coeff$gib.beta.mean, decreasing = T),]
+gibs.coeff[1:11,]
+paste(gibs.coeff$name, collapse = ", ")
+knitr::kable(gibs.coeff, "pipe")
+```
+
+## 4. Effective sample size for Gibbs
+```{r}
+par(mfrow = c(5,5))
+Gibs.effective.sample.size = vector()
+for (i in 1:ncol(X)) {
+  Gibs.effective.sample.size[i] =
+    round(coda::effectiveSize(runs.beta[i,]),1)
+}
+```
+
+### 5. R Square of Gibbs
+```{r}
+y= as.matrix(tdata$winPlacePerc)
+z = as.matrix(rep(1,p+1))
+X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+
+pred.Gibbs= X %*%  gib.beta.mean
+pred.Gibbs = pnorm(pred.Gibbs)
+
+R.square = 1-  sum((y-pred.Gibbs)^2) / sum((y-mean(y))^2);R.square
+```
+
+
+
+### 7. Test Error of Gibbs
+```{r}
+test.data = readRDS("split_test_dataset.rds")
+X = test.data %>% select(-c(winPlacePerc)) %>% as.matrix()
+X = cbind(rep(1,nrow(X)), X)
+y = test.data$winPlacePerc
+
+pred.Gibbs= X[,second_comb_gibs==1,drop=F] %*%  gib.beta.mean[second_comb_gibs==1,drop=F]
+pred.Gibbs = pnorm(pred.Gibbs)
+test.error.gibbs = sum((y-pred.Gibbs)^2);test.error.gibbs
+```
+
+
+
+
+
+
+
+
+
+
+# Result of MH
+## 1. Sequence of MH
+```{r}
+par(mfrow=c(5,5))
+for (i in 1:nrow(beta.gamma.sim)) {
+  plot(1:ncol(beta.gamma.sim), beta.gamma.sim[i,], 'l',  main = paste("MH Iterations for beta", i))
+}
+```
+
+## 2.MH Best Model
+```{r}
+gammas = vector()
+for(i in 1:ncol(gamma.sim)){
+  gammas[i]= paste(gamma.sim[,i],collapse=' ')
+}
+gammas = as.data.frame(table(gammas))
+gammas = gammas[order(gammas$Freq, decreasing = T),]
+gammas$Freq = round(gammas$Freq / ncol(gamma.sim), 3)
+print(gammas)
+highest.combo.mh = vector()
+second.combo.mh = vector()
+for(i in 1:ncol(gamma.sim)){
+  if(gammas$gammas[1] == paste(gamma.sim[,i],collapse=' ')){
+    highest.combo.mh = gamma.sim[,i]
+  }
+  if(gammas$gammas[2] == paste(gamma.sim[,i],collapse=' ')){
+    second.combo.mh = gamma.sim[,i]
+  }
+}
+print(colnames(X)[which(highest.combo.mh %% 2 == 1)])
+print(colnames(X)[which(second.combo.mh %% 2 == 1)])
+```
+
+
+## 3.Rank of coefficient magnitude by Gibbs
+```{r}
+mh.beta.mean = vector()
+for(i in 1:p){
+  mh.beta.mean[i] = mean(beta.gamma.sim[i,])
+}
+mh.coeff = cbind(mh.beta.mean=abs(round(mh.beta.mean,3)), name =  c("intercept",colnames(tdata[1:24]))) %>% data.frame
+mh.coeff = mh.coeff[order(mh.coeff$mh.beta.mean, decreasing = T),]
+mh.coeff
+paste(mh.coeff$name, collapse = ", ")
+knitr::kable(mh.coeff, "pipe")
+```
+
+
+
+## 4.Effective Sample size 
+```{r}
+mh.eff.sams = vector()
+for (i in 1:nrow(beta.gamma.sim)) {
+  mh.eff.sams[i] = round(coda::effectiveSize(beta.gamma.sim[i,]), 1)
+}
+```
+
+
+
+
+
+## 5.Rsquare of MH
+```{r}
+mh.beta.mean = vector()
+for(i in 1:p){
+  # mh.beta.mean[i] = mean(c(beta.gamma.sim[i,],beta.gamma.sim2[i,]))
+  mh.beta.mean[i] = mean(beta.gamma.sim[i,])
+}
+
+y= as.matrix(tdata$winPlacePerc)
+z = as.matrix(rep(1,p+1))
+X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+
+pred.MH= X %*%  mh.beta.mean
+pred.MH = pnorm(pred.MH)
+
+R.square = 1-  sum((y-pred.MH)^2) / sum((y-mean(y))^2);R.square
+```
+
+
+
+## 6.Compare Posterior mean of beta Gibbs and MH
+
+```{r, eval = F}
+beta.post.means.old = data.frame(beta = seq(1,p), gib.beta.mean,mh.beta.mean, abs_diff = abs(mh.beta.mean-gib.beta.mean))
+
+beta.post.means = pivot_longer(beta.post.means.old, cols = c("gib.beta.mean","mh.beta.mean","abs_diff"))
+
+ggplot(beta.post.means, aes(x=beta, y=value)) + 
+  geom_bar(aes(fill = name),stat = "identity",position = "dodge") + scale_x_continuous(breaks=1:25,
+                                              labels=beta.post.means.old$beta)
+```
+
+
+
+
+### 7.Test Error of MH
+```{r}
+mh.beta.mean = vector()
+for(i in 1:p){
+  # mh.beta.mean[i] = mean(c(beta.gamma.sim[i,],beta.gamma.sim2[i,]))
+  mh.beta.mean[i] = mean(beta.gamma.sim[i,])
+}
+
+test.data = readRDS("split_test_dataset.rds")
+X = test.data %>% select(-c(winPlacePerc)) %>% as.matrix()
+X = cbind(rep(1,nrow(X)), X)
+y = test.data$winPlacePerc
+
+pred.MH = X[,second.combo.mh==1,drop=F] %*%  mh.beta.mean[second.combo.mh==1,drop=F]
+pred.MH = pnorm(pred.MH)
+test.error.MH = sum((y-pred.MH)^2);test.error.MH
+```
+
+
+
+### 8.Posterior Distribution Compare
+```{r, eval = F}
+par(mfrow= c(5,5))
+for(i in 1:p){
+  plotrix::multhist(list(runs.beta[i,], beta.gamma.sim[i,]), freq = F, main = i)
+}
+```
+
+## Table for comparison of betas between Gibbs and MH
+```{r}
+compare.beta = data.frame(beta = seq(1,p), Gibbs.beta.mean = round(gib.beta.mean,3),MH.beta.mean = round(mh.beta.mean,3), abs_diff = round(abs(mh.beta.mean-gib.beta.mean),3), Gibbs.eff.sam =  Gibs.effective.sample.size, MH.eff.sam = mh.eff.sams)
+knitr::kable(compare.beta, "pipe")
+```
+
+## R Square for Combined Estimate of Beta from Both Chain
+```{r}
+beta.combined = vector()
+for(i in 1:p){
+  if(compare.beta$Gibbs.eff.sam[i] > compare.beta$MH.eff.sam[i]){
+    beta.combined[i] = gib.beta.mean[i]
+  } else {
+    beta.combined[i] = mh.beta.mean[i]
+  }
+}
+y= as.matrix(tdata$winPlacePerc)
+z = as.matrix(rep(1,p+1))
+X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix
+X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix
+
+pred.MH= X %*%  beta.combined
+pred.MH = pnorm(pred.MH)
+
+R.square = 1-  sum((y-pred.MH)^2) / sum((y-mean(y))^2);R.square
+```
+
+
+
+## Test Error for Combined Estimate of Beta from Both Chain
+```{r}
+beta.combined = vector()
+for(i in 1:p){
+  if(compare.beta$Gibbs.eff.sam[i] > compare.beta$MH.eff.sam[i]){
+    beta.combined[i] = gib.beta.mean[i]
+  } else {
+    beta.combined[i] = mh.beta.mean[i]
+  }
+}
+test.data = readRDS("split_test_dataset.rds")
+X = test.data %>% select(-c(winPlacePerc)) %>% as.matrix()
+X = cbind(rep(1,nrow(X)), X)
+y = test.data$winPlacePerc
+
+pred.MH = X %*%  beta.combined
+pred.MH = pnorm(pred.MH)
+test.error.MH = sum((y-pred.MH)^2);test.error.MH
+```
+
+
+
+
+
+<!-- # Lasso Model -->
+<!-- ```{r} -->
+<!-- #reformat y  -->
+<!-- y= as.matrix(tdata$winPlacePerc) -->
+<!-- one.index = which(y==1) -->
+<!-- second.highest = sort(unique(y), decreasing = T)[2] -->
+<!-- remake.one = runif(length(one.index), min = second.highest+0.0001,max= 1-0.0001) -->
+<!-- y[one.index] = remake.one -->
+<!-- zero.index = which(y==0) -->
+<!-- second.lowest = sort(unique(y))[2] -->
+<!-- remake.zero = runif(length(zero.index), min = 0+0.0001,max= second.lowest-0.0001) -->
+<!-- y[zero.index] = remake.zero -->
+<!-- y=qnorm(y) -->
+
+<!-- X = tdata %>% select(-c(winPlacePerc)) %>% as.matrix -->
+<!-- X = cbind(intercept = rep(1, nrow(X)), X) %>% as.matrix -->
+
+
+<!-- cv.out <- cv.glmnet(X,y, nfolds = 5, alpha = 1) -->
+<!-- test.data = readRDS("split_test_dataset.rds") -->
+<!-- X.test = test.data %>% select(-c(winPlacePerc)) %>% as.matrix() -->
+<!-- X.test = cbind(rep(1,nrow(X.test)), X.test) -->
+<!-- y.test = test.data$winPlacePerc -->
+
+<!-- model <- glmnet(x = X, y = y, alpha = 1, lambda = cv.out$lambda.min) -->
+<!-- prediction.lasso <- predict(model, newx = X.test) -->
+<!-- prediction.lasso = pnorm(prediction.lasso) -->
+<!-- test.error.lasso = sum((y.test-prediction.lasso)^2);test.error.lasso -->
+<!-- ``` -->
+
+
+
+

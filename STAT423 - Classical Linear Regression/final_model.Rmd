@@ -1,0 +1,501 @@
+---
+title: "final_model"
+output: pdf_document
+---
+
+<!-- ```{r setup, include=FALSE} -->
+<!-- knitr::opts_chunk$set(echo = TRUE) -->
+<!-- ``` -->
+
+<!-- ```{r setup, include=FALSE} -->
+<!-- knitr::opts_chunk$set(echo = TRUE) -->
+<!-- ``` -->
+
+
+<!-- ## Data Prep -->
+<!-- ```{r setup, include=FALSE} -->
+<!-- rm(list = ls()) -->
+
+<!-- knitr::opts_chunk$set(echo = TRUE) -->
+
+<!-- library(tidyverse) -->
+<!-- library(dplyr) -->
+<!-- loocv.lm <- function(mdl) { -->
+<!--   return(mean((residuals(mdl)/(1-hatvalues(mdl)))^2)) -->
+<!-- } -->
+<!-- game.data = read_csv("bggdata.csv") -->
+<!-- data <- game.data -->
+<!-- ``` -->
+
+<!-- We will convert variable type according to our data dictionary -->
+<!-- ```{r convert variable type} -->
+<!-- data$`Measurement Movement` <- as.factor(data$`Measurement Movement`) -->
+<!-- data$`Pattern Movement` <- as.factor(data$`Pattern Movement`) -->
+<!-- data$`Miniatures`<- as.factor(data$`Miniatures`) -->
+<!-- data$`Print & Play` <- as.factor(data$`Print & Play`) -->
+<!-- data$`Puzzle` <- as.factor(data$`Puzzle`) -->
+<!-- data$`Cat:War` <- as.factor(data$`Cat:War`) -->
+<!-- data$`Cat:Strategy` <- as.factor(data$`Cat:Strategy`) -->
+<!-- data$`Cat:Family` <- as.factor(data$`Cat:Family`) -->
+<!-- ``` -->
+
+<!-- Let's try to delete the outliers and see how many data left. -->
+<!-- ```{r delete the outliers} -->
+<!-- data <- na.omit(data) -->
+
+<!-- temp <- data[data$`MaxPlayers`!= 0 & data$`MaxPlayers`!= 999 & -->
+<!--        data$`MinPlayers`!= 0 & -->
+<!--        data$`MfgAgeRec`!= 0 & -->
+<!--        data$`NumOwned`!= 0 & -->
+<!--        data$`MfgAgeRec`!= 0 &  -->
+<!--        data$`MfgPlaytime` != max(data$`MfgPlaytime`) &  -->
+<!--        data$GameWeight != 0,] # 15271 obs  -->
+
+<!-- data <- temp -->
+<!-- ``` -->
+
+
+<!-- ## Model Selection -->
+<!-- ```{r, message=FALSE} -->
+<!-- # Initial full model -->
+<!-- fit1 <- lm(`AvgRating` ~ `Pattern Movement`+`Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Measurement Movement`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `Cat:War`+`ComAgeRec` + MaxPlayers +  MfgPlaytime + -->
+<!--                             NumOwned, data = data, x=T, y= T) -->
+
+<!-- # reduced model (remove non-significant main effects) -->
+<!-- fit5 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `ComAgeRec`  +  MfgPlaytime + -->
+<!--                             NumOwned, data = data, x=T, y= T) -->
+
+
+<!-- # include all two-way interactions -->
+<!-- fit6 <- lm(`AvgRating` ~ (`Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `ComAgeRec`  +  MfgPlaytime + -->
+<!--                             NumOwned)^2, data = data, x=T, y= T) -->
+
+<!-- # remove non-significant interactions -->
+<!-- fit8 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `ComAgeRec`  +  MfgPlaytime + -->
+<!--                             NumOwned + -->
+<!--                           Miniatures:GameWeight + -->
+<!--                           Miniatures:ComAgeRec + Miniatures:NumOwned  +  -->
+<!--                           GameWeight:`Print & Play`+  -->
+<!--                           GameWeight:Puzzle+ -->
+<!--                           GameWeight:`Cat:Strategy`+  -->
+<!--                           GameWeight:`Cat:Family`+ -->
+<!--                           GameWeight:MinPlayers + -->
+<!--                           GameWeight:MfgAgeRec + -->
+<!--                           GameWeight:ComAgeRec + -->
+<!--                           GameWeight:MfgPlaytime + -->
+<!--                           `Print & Play`:`Cat:Family` + -->
+<!--                           `Print & Play`:MfgAgeRec + -->
+<!--                           `Print & Play`:ComAgeRec + -->
+<!--                           Puzzle:MfgPlaytime+ -->
+<!--                            `Cat:Strategy`:`Cat:Family`+ -->
+<!--                            `Cat:Family`:MfgAgeRec + -->
+<!--                           `Cat:Family`:ComAgeRec + -->
+<!--                           `Cat:Family`:MfgPlaytime + -->
+<!--                           `Cat:Family`:NumOwned + -->
+<!--                           MinPlayers:ComAgeRec + -->
+<!--                           MfgAgeRec:ComAgeRec +  -->
+<!--                          ComAgeRec:MfgPlaytime +  -->
+<!--              MinPlayers:MfgPlaytime+`Cat:Strategy`:MinPlayers +Miniatures:MfgAgeRec + -->
+<!--              MfgAgeRec:MfgPlaytime+MfgPlaytime:NumOwned , -->
+<!--                           data = data, x=T, y= T) -->
+
+
+<!-- # Data transformation -->
+<!-- temp <- data -->
+<!-- data$MinPlayers <- log(data$MinPlayers + 1) -->
+<!-- data$MfgPlaytime <- log(data$MfgPlaytime + 1) -->
+<!-- data$NumOwned <- log(data$NumOwned + 1) -->
+<!-- fit9 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `ComAgeRec`  +  MfgPlaytime + -->
+<!--                           NumOwned + -->
+<!--                           Miniatures:GameWeight + -->
+<!--                           Miniatures:ComAgeRec + Miniatures:NumOwned  +  -->
+<!--                           GameWeight:`Print & Play`+  -->
+<!--                           GameWeight:Puzzle+ -->
+<!--                           GameWeight:`Cat:Strategy`+  -->
+<!--                           GameWeight:`Cat:Family`+ -->
+<!--                           GameWeight:MinPlayers + -->
+<!--                           GameWeight:MfgAgeRec + -->
+<!--                           GameWeight:ComAgeRec + -->
+<!--                           GameWeight:MfgPlaytime + -->
+<!--                           `Print & Play`:`Cat:Family` + -->
+<!--                           `Print & Play`:MfgAgeRec + -->
+<!--                           `Print & Play`:ComAgeRec + -->
+<!--                           Puzzle:MfgPlaytime+ -->
+<!--                            `Cat:Strategy`:`Cat:Family`+ -->
+<!--                            `Cat:Family`:MfgAgeRec + -->
+<!--                           `Cat:Family`:ComAgeRec + -->
+<!--                           `Cat:Family`:MfgPlaytime + -->
+<!--                           `Cat:Family`:NumOwned + -->
+<!--                           MinPlayers:ComAgeRec + -->
+<!--                           MfgAgeRec:ComAgeRec +  -->
+<!--                          ComAgeRec:MfgPlaytime +  -->
+<!--              MinPlayers:MfgPlaytime+`Cat:Strategy`:MinPlayers +Miniatures:MfgAgeRec + -->
+<!--              MfgAgeRec:MfgPlaytime+MfgPlaytime:NumOwned , -->
+<!--                           data = data, x=T, y= T) -->
+
+
+<!-- # Final best model - after transformation and then remove non-significant interations -->
+<!-- fit11 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+ -->
+<!--                           `Print & Play`+`Puzzle`+ -->
+<!--                           `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+ -->
+<!--                           `ComAgeRec`  +  MfgPlaytime + -->
+<!--                           NumOwned + -->
+<!--                           Miniatures:GameWeight + -->
+<!--                           Miniatures:ComAgeRec + Miniatures:NumOwned  +  -->
+<!--                           GameWeight:Puzzle+ -->
+<!--                           GameWeight:`Cat:Strategy`+  -->
+<!--                           GameWeight:`Cat:Family`+ -->
+<!--                           GameWeight:MinPlayers + -->
+<!--                           GameWeight:MfgAgeRec + -->
+<!--                           GameWeight:ComAgeRec + -->
+<!--                           `Print & Play`:`Cat:Family` + -->
+<!--                           `Print & Play`:MfgAgeRec + -->
+<!--                           Puzzle:MfgPlaytime+ -->
+<!--                            `Cat:Family`:MfgAgeRec + -->
+<!--                           `Cat:Family`:ComAgeRec + -->
+<!--                           `Cat:Family`:MfgPlaytime + -->
+<!--                           `Cat:Family`:NumOwned + -->
+<!--                           MfgAgeRec:ComAgeRec +  -->
+<!--             Miniatures:MfgAgeRec + -->
+<!--              MfgAgeRec:MfgPlaytime, -->
+<!--                           data = data, x=T, y= T) -->
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = F)
+
+library(tidyverse)
+library(dplyr)
+library(lmtest)
+library(lmvar) # for cv.lm
+
+game.data = read_csv("bggdata.csv")
+data <- game.data
+
+data$`Measurement Movement` <- as.factor(data$`Measurement Movement`)
+data$`Pattern Movement` <- as.factor(data$`Pattern Movement`)
+data$`Miniatures`<- as.factor(data$`Miniatures`)
+data$`Print & Play` <- as.factor(data$`Print & Play`)
+data$`Puzzle` <- as.factor(data$`Puzzle`)
+data$`Cat:War` <- as.factor(data$`Cat:War`)
+data$`Cat:Strategy` <- as.factor(data$`Cat:Strategy`)
+data$`Cat:Family` <- as.factor(data$`Cat:Family`)
+
+data <- na.omit(data)
+
+temp <- data[data$`MaxPlayers`!= 0 & data$`MaxPlayers`!= 999 &
+       data$`MinPlayers`!= 0 &
+       data$`MfgAgeRec`!= 0 &
+       data$`NumOwned`!= 0 &
+       data$`MfgAgeRec`!= 0 & 
+       data$`MfgPlaytime` != max(data$`MfgPlaytime`) & 
+       data$GameWeight != 0,] # 15271 obs 
+
+data <- temp
+
+trans.data = data.table::copy(data)
+
+trans.data$MinPlayers <- log(data$MinPlayers + 1)
+trans.data$MfgPlaytime <- log(data$MfgPlaytime + 1)
+trans.data$NumOwned <- log(data$NumOwned + 1)
+
+```
+
+
+```{r}
+#Model's
+fit.full = lm(`AvgRating` ~ (.)^2, data = data, x=T, y= T)
+
+
+
+fit5 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+
+                          `Print & Play`+`Puzzle`+
+                          `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+
+                          `ComAgeRec`  +  MfgPlaytime +
+                            NumOwned, data = data, x=T, y= T)
+
+
+
+fit8 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+
+                          `Print & Play`+`Puzzle`+
+                          `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+
+                          `ComAgeRec`  +  MfgPlaytime +
+                            NumOwned +
+                          Miniatures:GameWeight +
+                          Miniatures:ComAgeRec + Miniatures:NumOwned  + 
+                          GameWeight:`Print & Play`+ 
+                          GameWeight:Puzzle+
+                          GameWeight:`Cat:Strategy`+ 
+                          GameWeight:`Cat:Family`+
+                          GameWeight:MinPlayers +
+                          GameWeight:MfgAgeRec +
+                          GameWeight:ComAgeRec +
+                          GameWeight:MfgPlaytime +
+                          `Print & Play`:`Cat:Family` +
+                          `Print & Play`:MfgAgeRec +
+                          `Print & Play`:ComAgeRec +
+                          Puzzle:MfgPlaytime+
+                           `Cat:Strategy`:`Cat:Family`+
+                           `Cat:Family`:MfgAgeRec +
+                          `Cat:Family`:ComAgeRec +
+                          `Cat:Family`:MfgPlaytime +
+                          `Cat:Family`:NumOwned +
+                          MinPlayers:ComAgeRec +
+                          MfgAgeRec:ComAgeRec + 
+                         ComAgeRec:MfgPlaytime + 
+             MinPlayers:MfgPlaytime+`Cat:Strategy`:MinPlayers +Miniatures:MfgAgeRec +
+             MfgAgeRec:MfgPlaytime+MfgPlaytime:NumOwned ,
+                          data = data, x=T, y= T)
+
+
+
+fit11 <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+
+                          `Print & Play`+`Puzzle`+
+                          `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+
+                          `ComAgeRec`  +  MfgPlaytime +
+                          NumOwned +
+                          Miniatures:GameWeight +
+                          Miniatures:ComAgeRec + Miniatures:NumOwned  + 
+                          GameWeight:Puzzle+
+                          GameWeight:`Cat:Strategy`+ 
+                          GameWeight:`Cat:Family`+
+                          GameWeight:MinPlayers +
+                          GameWeight:MfgAgeRec +
+                          GameWeight:ComAgeRec +
+                          `Print & Play`:`Cat:Family` +
+                          `Print & Play`:MfgAgeRec +
+                          Puzzle:MfgPlaytime+
+                           `Cat:Family`:MfgAgeRec +
+                          `Cat:Family`:ComAgeRec +
+                          `Cat:Family`:MfgPlaytime +
+                          `Cat:Family`:NumOwned +
+                          MfgAgeRec:ComAgeRec + 
+            Miniatures:MfgAgeRec +
+             MfgAgeRec:MfgPlaytime,
+                          data = trans.data, x=T, y= T)
+
+```
+
+
+
+
+
+
+```{r echo=FALSE}
+summary(fit.full) #0.5243 
+AIC(fit.full) #28288.7
+BIC(fit.full) #29387.95
+set.seed(423)
+cv.lm(fit.full,5)[2]$MSE$mean  #0.3811788  
+s1 = resid(fit.full)[fitted(fit.full)<= median(fitted(fit.full))]
+s2 = resid(fit.full)[fitted(fit.full)>median(fitted(fit.full))]
+var.test(s1,s2) #0
+summary(lm(resid(fit.full)~ fitted(fit.full)))
+dwtest(fit.full)
+
+
+
+#additive 
+summary(fit5) #0.3338  
+AIC(fit5) #33300.49
+BIC(fit5) #33399.73
+set.seed(423)
+cv.lm(fit5,5)[2]$MSE$mean  #0.5183248  
+s1 = resid(fit5)[fitted(fit5)<= median(fitted(fit5))]
+s2 = resid(fit5)[fitted(fit5)>median(fitted(fit5))]
+var.test(s1,s2) #0
+summary(lm(resid(fit5)~ fitted(fit5)))
+dwtest(fit5)
+
+
+
+#additive & interaction
+summary(fit8) #0.3526   
+AIC(fit8) #32892.26
+BIC(fit8) #33205.24
+set.seed(423)
+cv.lm(fit8,5)[2]$MSE$mean  #0.5062459  
+s1 = resid(fit8)[fitted(fit8)<= median(fitted(fit8))]
+s2 = resid(fit8)[fitted(fit8)>median(fitted(fit8))]
+var.test(s1,s2) #0
+summary(lm(resid(fit8)~ fitted(fit8)))
+dwtest(fit8)
+
+
+#
+summary(fit11) #0.3645    
+AIC(fit11) #32598.59
+BIC(fit11) #32842.87
+set.seed(423)
+cv.lm(fit11,5)[2]$MSE$mean  #0.4952371  
+s1 = resid(fit11)[fitted(fit11)<= median(fitted(fit11))]
+s2 = resid(fit11)[fitted(fit11)>median(fitted(fit11))]
+var.test(s1,s2) #0
+summary(lm(resid(fit11)~ fitted(fit11)))
+dwtest(fit11)
+```
+
+
+```{r}
+#remove outlier
+# head(sort(cooks.distance(fit11), decreasing = T), n=40)
+cooksd = cooks.distance(fit11)
+
+par(mfrow=c(1,2))
+hist(cooks.distance(fit11))
+B <- boxplot(cooksd)
+points(B$group, B$out, type = "p", pch=20)
+
+format(summary(cooksd), scientific = F, digits = 3)
+
+outlier.crit = quantile(cooksd, 0.75) + 1.5*(quantile(cooksd, 0.75)-quantile(cooksd, 0.25))
+row_names_df_to_remove=names(cooksd)[(cooksd >= outlier.crit )]
+trans.data.noOutlier = trans.data[!(row.names(trans.data) %in% row_names_df_to_remove),]
+
+
+fit11m <- lm(`AvgRating` ~ `Miniatures`+`GameWeight`+
+                          `Print & Play`+`Puzzle`+
+                          `Cat:Strategy`+`Cat:Family`+`MinPlayers`+`MfgAgeRec`+
+                          `ComAgeRec`  +  MfgPlaytime +
+                          NumOwned +
+                          Miniatures:GameWeight +
+                          Miniatures:ComAgeRec + Miniatures:NumOwned  + 
+                          GameWeight:Puzzle+
+                          GameWeight:`Cat:Strategy`+ 
+                          GameWeight:`Cat:Family`+
+                          GameWeight:MinPlayers +
+                          GameWeight:MfgAgeRec +
+                          GameWeight:ComAgeRec +
+                          `Print & Play`:`Cat:Family` +
+                          `Print & Play`:MfgAgeRec +
+                          Puzzle:MfgPlaytime+
+                           `Cat:Family`:MfgAgeRec +
+                          `Cat:Family`:ComAgeRec +
+                          `Cat:Family`:MfgPlaytime +
+                          `Cat:Family`:NumOwned +
+                          MfgAgeRec:ComAgeRec + 
+            Miniatures:MfgAgeRec +
+             MfgAgeRec:MfgPlaytime,
+                          data = trans.data.noOutlier, x=T, y= T)
+summary(fit11m) #0.4656     
+AIC(fit11m) #22066.08
+BIC(fit11m) #22306.12
+set.seed(423)
+cv.lm(fit11m,5)[2]$MSE$mean  #0.3044836  
+s1 = resid(fit11m)[fitted(fit11m)<= median(fitted(fit11m))]
+s2 = resid(fit11m)[fitted(fit11m)>median(fitted(fit11m))]
+var.test(s1,s2) #0
+summary(lm(resid(fit11m)~ fitted(fit11m)))
+dwtest(fit11m)
+```
+
+
+```{r}
+m.name = c("Full Model", "Additive Model", "Additive&Interaction Model", "Transformation Model", "Outliers Removed Model")
+
+par(mfrow=c(5,5))
+plot(seq(1,length(resid(fit.full)),by=1),resid(fit.full), xlab="index",main=m.name[1])
+plot(fit.full)
+
+
+plot(seq(1,length(resid(fit5)),by=1),resid(fit5), xlab="index",main=m.name[2])
+plot(fit5)
+
+
+plot(seq(1,length(resid(fit8)),by=1),resid(fit8), xlab="index",main=m.name[3])
+plot(fit8)
+
+
+plot(seq(1,length(resid(fit11)),by=1),resid(fit11), xlab="index",main=m.name[4])
+plot(fit11)
+
+plot(seq(1,length(resid(fit11m)),by=1),resid(fit11m), xlab="index",main=m.name[5])
+plot(fit11m)
+```
+
+
+
+
+```{r}
+resi = resid(fit11m)
+resi.shift = rep(-1, length(resi))
+resi.shift[1] = resi[length(resi)]
+for(i in 2:(length(resi))){
+  resi.shift[i]= resi[i-1]
+}
+x=seq(-4,4,length=10000)
+prob = dnorm(x,0,1)
+plot(resi, resi.shift, main = "Residual_i vs. Residual_{i-1} for Ourlier Removed Model")
+
+
+
+par(mfrow=c(2,2))
+h=hist(fitted(fit11m),freq = F)
+plot(resi, resi.shift, main = "Residual_i vs. Residual_{i-1} for Ourlier Removed Model")
+
+plot(fit11m, which=1)
+h1= hist(rstandard(fit11m), freq = F)
+lines(x,prob)
+
+
+# plot(fitted(fit11m), resid(fit11m)^2)
+# 
+# 
+# h=hist(resid(fit11m),freq = F)
+
+
+
+```
+
+```{r}
+library(caret)
+
+trControl <- trainControl(method  = "cv",
+                          number  = 5)
+
+fit <- train(AvgRating ~ .,
+             method     = "knn",
+             tuneGrid   = expand.grid(k = 8:20),
+             trControl  = trControl,
+             metric     = "RMSE",
+             data       = trans.data)
+
+```
+
+
+

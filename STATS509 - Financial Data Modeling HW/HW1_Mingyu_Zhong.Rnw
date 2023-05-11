@@ -1,0 +1,442 @@
+\documentclass[11pt]{article}
+\usepackage{fullpage}
+\usepackage[colorlinks=true]{hyperref} 
+
+
+\begin{document}
+% \SweaveOpts{concordance=TRUE}
+<<Homework,include=FALSE>>=
+HW.number = 1
+Due.date  = "Tue, January 17th"
+@
+
+\centerline{\Large Homework \Sexpr{HW.number} }
+
+\medskip
+\centerline{ Due on \Sexpr{Due.date} }
+
+\medskip
+\noindent
+{\bf Instructions:} 
+\begin{itemize}
+\item Install {\tt pdflatex}, {\tt R}, and 
+{\tt RStudio} on your computer.
+\item 
+Please edit the {\tt HW1\_First\_Last.Rnw} file 
+in {\tt Rstudio} and compile with {\tt knitr} instead of {\tt Sweave}. 
+Go to the menu {\tt RStudio|Preferences...|Sweave} choose the 
+{\tt knitr} option, i.e., {\tt Weave Rnw files using knitr?}
+You may have to install {\tt knitr} and other necessary packages.  
+
+\item 
+Replace "First" and "Last" in the file-name with your first and last names,
+respectively. Complete your assignment by modifying and/or adding necessary 
+R-code in the text below. 
+
+\item You should submit both the {\bf data} and the 
+{\em HW1\_First\_Last.Rnw} file in a zip-file in Canvas. The zip-file 
+should be named "HW1\_First\_Last.zip" and it should contain a single 
+folder named "First\_Last" with all the necessary data files, the 
+{\tt HW1\_First\_Last.Rnw} and  {\tt HW1\_First\_Last.pdf} file, which 
+was obtained from compiling {\tt HW1\_First\_Last.Rnw} with {\tt knitr}
+and \LaTeX.
+
+{\bf NOTE:} "First" is your first name and "Last" your last name.
+
+\item The GSI grader will unzip your file and compile it with Rstudio and
+knitr.  If the file fails to compile due to errors other than missing
+packages, there will be an automatic 10\% deduction to your score. Then,
+the GSI will proceed with grading your submitted PDF.   
+
+\item {\bf Data.} The zip-file should include also the ".csv" file with the 
+stock market data you downloaded frin WRDS so that when everything is unzipped
+in one folder, the GSI is able to compile and reproduce your PDF.
+
+\end{itemize}
+
+{\bf \Large Problems:}
+
+\begin{enumerate}
+ 
+\item {\bf (a)}  Read the tutorial on accessing and downloading data from 
+ WRDS available on \href{https://www.dropbox.com/s/js456rpnpkrjuta/introduction-to-wrds-getting-started-slide-deck.pdf?dl=0}{this link}. 
+ 
+{\bf (b)} Execute a query to download the closing daily prices of
+the stocks with tickers {\tt TSLA} and {\tt AAPL} for the period Jan 1, 2022
+through Jan 6, 2023. 
+
+{\bf (c)} Place the resulting {\tt CSV} file in a desired folder in your
+computer and modify the following code to produce plots of daily 
+{\tt prices}, {\tt returns}, {\tt log-returns}, and a scatter-plot of
+the log-returns of {\tt TSLA} against those of {\tt AAPL}. 
+
+Identify the times of splits if any for the {\tt AAPL} and {\tt TSLA} stock in this period.
+
+
+{\em Uncomment, i.e., remove the '\%', in the following lines when ready to compile. Remove also 
+{\tt $\backslash$begin\{verbatim\}} and {\tt $\backslash$end\{verbatim\}} in the ".Rnw" file.}
+
+
+<<plots, include=TRUE>>=
+dat = read.csv("HW1P1Data.csv",header=TRUE)
+# Add code here to populate the necessary variables.
+t<-as.Date(as.character(dat$date),"%Y%m%d")
+stock_tickers = c("AAPL","TSLA");
+stocks = list( "AAPL"=c(), "TSLA"=c());
+times = stocks;
+for (tick in stock_tickers){
+  idx0 =which(dat$TICKER==tick);
+  idx1 =which(is.na(dat$PRC[idx0])==FALSE);
+  times[[tick]] = t[idx0[idx1]];
+  stocks[[tick]] = abs(dat$PRC[idx0[idx1]])
+}
+n = length(stocks$AAPL)
+R.AAPL = stocks$AAPL[-1]/stocks$AAPL[-n] - 1
+r.AAPL = diff(log(stocks$AAPL))
+n = length(stocks$TSLA)
+R.TSLA = stocks$TSLA[-1]/stocks$TSLA[-n] - 1
+r.TSLA = diff(log(stocks$TSLA))
+
+par(mfrow=c(2,2), xpd=T)
+plot(times$AAPL,stocks$AAPL,type="l", main = "price of AAPL")
+
+plot(times$TSLA,stocks$TSLA,type="l", col=2, main = "price of TSLA")
+
+plot(times$AAPL[-1],R.AAPL,type="l",main = "Return of AAPL and TSLA", ylim = c(min(R.TSLA, R.AAPL),max(R.TSLA, R.AAPL)), xlab = "time", ylab = "Return")
+lines(times$AAPL[-1],R.TSLA,col=2)
+
+plot(times$AAPL[-1],r.AAPL,type="l",main = "Log Return of AAPL and TSLA", ylim = c(min(r.TSLA, r.AAPL),max(r.TSLA, r.AAPL)), xlab = "time", ylab = "Log Return")
+lines(times$AAPL[-1],r.TSLA,col=2)
+
+par(mfrow=c(1,1), xpd=T)
+plot(r.TSLA,r.AAPL, main= "log-returns of TSLA against AAPL")
+@
+
+Black line is AAPL, red line is TSLA. 
+
+There is not any split in this period. 
+
+
+\newpage
+
+\item Download the file "{\tt sp500\_full.csv}" available in the {\tt Data} folder of the {\tt Files} section in {\tt Canvas}.
+It provides the data on daily prices and returns (among other things) of the S\&P 500 index.  This is the 
+same data set used in 
+lectures.
+
+{\bf (a)} Plot the time-series of daily returns and daily log-returns. You need to identify which variable
+gives the returns and also compute the log-returns from the daily closing values of the index. 
+Comment on the extreme drops in daily returns/log-returns.  Can they be associated with known market events?
+
+<<P2a, include=TRUE>>=
+p2data = read.csv("sp500_full.csv",header=TRUE)
+p2data$caldt<-as.Date(as.character(p2data$caldt),"%Y%m%d")
+# str(p2data)
+# idx1 =which(is.na(p2data$usdval)==FALSE)
+idx1 =which(p2data$caldt>="1960-01-01")
+
+c.p2d = p2data[idx1,]
+n = nrow(c.p2d)
+R.sp = c.p2d$usdval[-1]/c.p2d$usdval[-n] - 1
+r.sp = diff(log(c.p2d$usdval))
+time = c.p2d$caldt[-1]
+
+par(mfrow=c(1,1))
+plot(time, R.sp, type="l", ylim=c(range(r.sp)))
+points(time, r.sp, col="red", cex=0.3)
+
+time[which(r.sp< -0.09)]
+@
+
+The extreme drops in daily returns/log-returns correspond to the Black Monday in 1987, financial crisis in 2008, and COVID-19 in 2020. 
+
+{\bf (b)} Plot the auto-correlation functions of the 1-day (i.e., daily), 5-day, 10-day and 20-day log-returns and their squares.
+
+<<p2b, include=TRUE>>=
+r.5day = vector()
+for(i in 1:(n-5+1)){
+  r.5day[i] = sum(r.sp[i:(i+5-1)])
+}
+
+r.10day = vector()
+for(i in 1:(n-10+1)){
+  r.10day[i] = sum(r.sp[i:(i+10-1)])
+}
+
+r.20day = vector()
+for(i in 1:(n-20+1)){
+  r.20day[i] = sum(r.sp[i:(i+20-1)])
+}
+
+par(mfrow=c(1,2))
+acf(r.sp, na.action = na.pass,lag.max = 250, main="ACF: 1-day log returns")
+acf(r.sp^2, na.action = na.pass,lag.max = 250, main="ACF: Squred 1-day log returns")
+
+par(mfrow=c(1,2))
+acf(r.5day, na.action = na.pass,lag.max = 250, main="ACF: 5-day log returns")
+acf(r.5day^2, na.action = na.pass,lag.max = 250, main="ACF: Squred 5-day log returns")
+
+par(mfrow=c(1,2))
+acf(r.10day, na.action = na.pass,lag.max = 250, main="ACF: 10-day log returns")
+acf(r.10day^2, na.action = na.pass,lag.max = 250, main="ACF: Squred 10-day log returns")
+
+par(mfrow=c(1,2))
+acf(r.20day, na.action = na.pass,lag.max = 250, main="ACF: 20-day log returns")
+acf(r.20day^2, na.action = na.pass,lag.max = 250, main="ACF: Squred 20-day log returns")
+
+@
+
+{\bf (c)} Provide a table of the basic summary statistics for the 4 time series from part {\bf (b)}. 
+That is, compute the minimum, 1st quartile, the median, the 3rd quartile and the maximum, for the $k$-day log-returns 
+for $k=1, 5, 10,$ and $20$.  You can modify the code in the ".Rnw" file that produces:
+<<summary statistics, include=TRUE>>=
+returns = list("r1"=r.sp,"r5"=r.5day, "r10" = r.10day, "r20"=r.20day)
+# The list is populated with random numbers, which you'd have to replace by the 
+# corresponding returns.
+sum.stat = lapply(returns,summary) # What does this command do?
+x = matrix(0,nrow=4,ncol=6,dimnames=list(c("1-day","5-day","10-day","20-day"),
+                                         names(sum.stat$r1)))
+x[1,]=sum.stat$r1
+x[2,]=sum.stat$r5[1:6]
+x[3,]=sum.stat$r10[1:6]
+x[4,]=sum.stat$r20[1:6]
+knitr::kable(x)
+@
+
+
+\item {\bf (a)} 
+Using the same data set as in the previous problem, make a $2\times 2$ array of normal quantile-quantile plots. You can uncomment and 
+and modify the following code
+% Remove the following line when ready to uncomment the code
+
+<<qqplots, include=TRUE>>=
+par(mfrow=c(2,2))
+qqnorm(returns$r1, main="1-day log return QQ Plot")
+qqline(returns$r1,col="red")
+qqnorm(returns$r5, main="5-day log return QQ Plot")
+qqline(returns$r5,col="red")
+qqnorm(returns$r10, main="10-day log return QQ Plot")
+qqline(returns$r10,col="red")
+qqnorm(returns$r20, main="20-day log return QQ Plot")
+qqline(returns$r20,col="red")
+@
+
+
+{\bf (b)} What can you say about the tails of the returns?  
+
+\smallskip
+
+The tails of the returns are much heavier than the normal distribution as the period/time of log return increases. 
+
+
+\newpage
+\item 
+{\bf (a)} Go to the US Treasury web-site and look up the annual yield to maturity of 
+US government issued zero-coupon bonds of maturities $3$ months, $5$ years and $30$ years, respectively. 
+What are the names of these 3 types of securities?
+
+\medskip
+
+The name for zero-coupon bonds of maturities $3$ months is treasury bills. 
+
+The name for zero-coupon bonds of maturities $5$ years is treasury notes. 
+
+The name for zero-coupon bonds of maturities $30$ years is treasury bonds. 
+
+{\bf (b)} Suppose that a bond with maturity $T=30$ years, {\tt PAR} \$1000 and annual coupon payments $C$ is selling
+precisely at its par value. Determine the value of the coupon payments $C$. You can assume that the yield to maturity 
+is the one you found in part {\bf (a)}, corresponding to maturity $T=30$.
+
+\medskip
+
+
+% {
+% \begin{align}
+%   V &= C/r + (par-C/r)(1/(1+r)^T)\\
+%   1000(1-\frac{1}{(1+r)^T}) &= \frac{C}{r}(1-\frac{1}{(1+r)^T})\\
+%   C &= 1000r
+% \end{align}
+% }
+
+
+The interest rate $r$ for maturity $T=30$ on Jan 17 is $3.64\%$. Thus, by lecture note, $C = par \times r = 1000*0.0364 = 36.4$. 
+
+
+{\bf (c)} Use the R-function {\tt uniroot} to find the yield to maturity of a $30$-year, par \$1000 bond with annual coupon payments of
+$\$40$, which is selling for \$1200 now. Provide the R-code as well as the output.
+<<uniroot, include=TRUE>>=
+bv <- function (r,C,PAR,Maturity){
+return(C/r + (PAR - C/r)*(1+r)^(-Maturity))
+}
+uniroot(function(x,C,PAR,Maturity)(1200-bv(x,C,PAR,Maturity)),
+interval=c(0.0001,0.06),C=40,PAR=1000,Maturity=30)$root
+@
+{\em Hint:} Write an R-function that computes the price of a bond with yield to maturity $r$, annual coupon payments 
+$C$, par value {\tt PAR} and maturity $T$. You can borrow the function definition from the lectures.  You can then use this
+function in your call to {\tt uniroot} as I did in class, for example.
+ 
+ 
+The yield to maturity $r$ is 0.02979388 or $2.979388\%$.
+ 
+ 
+\newpage
+
+\item Suppose (although this is dangerously far from reality) that the daily log-returns of the S\&P 500 are 
+independent and identically distributed $N(\mu,\sigma^2)$.
+
+{\bf (a)} Using the data in file "{\tt sp500\_full.csv}", estimate $\mu$ and $\sigma$ with the sample mean and
+standard deviation.
+<<p5a, include=TRUE>>=
+mu.hat = mean(r.sp)
+sd.hat = sd(r.sp)
+@
+
+$\hat{\mu} = 0.0002968655$
+
+ $\hat{\sigma} = 0.01034079$ 
+
+{\bf (b)} Using the independence and Normality assumptions, compute the value-at-risk at level 
+$\alpha=0.05$, i.e., VaR$_{0.05}$ for the $k$-day log-returns, where $k=1,5,10$ and $20$.
+
+{\em Hint:} What is the distribution of the $k$-day log-returns, under the assumptions in the problem.
+
+<<p5b, include=TRUE>>=
+k=c(1,5,10,20)
+VaR = -qnorm(0.05, mean = mu.hat * k, sd = sqrt(sd.hat^2*k))
+cbind(k,VaR)
+@
+
+
+{\bf (c)} Provide a table of the proportion of times the $k$-day log-returns were lower than the 
+$-VaR_{0.05}$ values computed in part {\bf (b)}. That is, the proportion of time the $k$-day 
+log-losses were worse than the value-at-risk.
+<<VaR, include=TRUE>>=
+p = matrix(0,nrow=1,ncol=4,
+           dimnames=list("Freq below VaR",
+                         c("1-day","5-day","10-day","20-day")))
+# Put your code here that populates p with the desired empirical proportions
+
+p[1] = length(r.sp[r.sp < -VaR[1]]) / length(r.sp)
+p[2] = length(r.5day[r.5day < -VaR[2]]) / length(r.5day)
+p[3] = length(r.10day[r.10day < -VaR[3]]) / length(r.10day)
+p[4] = length(r.20day[r.20day < -VaR[4]]) / length(r.20day)
+knitr::kable(p)
+@
+Comment on the results. What should the values of these empirical frequencies be for models that agree with the data?
+%
+%{\em Remark:} Financial returns should not be modeled with normal distribution.
+%This example is just to illustrate how trivial and therefore appealing it is to compute Value-at-Risk under the assumption 
+%that the log-returns are normal and independent.
+
+For the model that agree with the data, the empirical frequencies should be close to 0.05 for all the $k$-day log-returns. Since the empirical frequencies for all the $k$-day log-returns is quite different/below 0.05, the i.i.d. normal model would not be a good model for the $k$-day log-returns data. 
+
+
+\newpage
+
+\item  In this problem we will first find a slightly more appropriate model for the log-returns 
+of the SP500 index data set. The idea is to replace the increments of the normal random
+walk model in the previous problem with t-distribued increments. 
+We will do so by trial and error and eyeballing  QQ-plots.  More sophisticated
+inference methods will come shortly.\\
+
+{\bf (a)} As in Problem 2 above,  load the SP500 data set from file {\tt sp500\_full.csv}. Select a 
+consecutive period of $10$ years. Standardize the log-returns in this period and 
+produce a series of QQ-plots of the daily log-returns against simulated samples from the standardized 
+t-distribution for varying degrees of freedom $\nu = 2.1, 3, 4,\ldots$. Pick a value for the degrees of 
+freedom $\nu >2$ that result in the QQ-plot with the best fit.  Produce a QQ-plot with this ``best fit'' value
+as well as with two other values of $\nu$ -- one smaller and the other larger. You can use some of the 
+following code as a template and modify it as you see fit.  {\bf Comment on why the value of $\nu$ you chose
+is reasonable.}
+
+% Remove the following line when ready to uncomment the code
+<<model fitting via qqplots, include=TRUE>>=
+sp500 = read.csv("sp500_full.csv",header=TRUE)
+t.sp = as.Date(x=as.character(sp500$caldt),format="%Y%m%d")
+idx = which(t.sp>as.Date("2000-01-01") & t.sp < as.Date("2010-01-01"))
+rt = diff(log(sp500$spindx[idx]));
+mu = mean(rt);
+sig = sd(rt);
+rt_standardized = (rt-mu)/sig;
+
+# % The following function produces the desired QQ-plots.
+set.seed(509)
+qqplot_against_std <- function(standardized_log_returns,nu = 2.1){
+require(fGarch)
+n = length(standardized_log_returns);
+qqplot(standardized_log_returns,fGarch::rstd(n,nu = nu),
+      xlab="SP500 standardized log-returns",
+      ylab = "standardized t-distribution samples", 
+      main=paste("QQ-plot: nu = ",nu));
+abline(a=0,b=1,col="red")
+}
+
+par(mfrow=c(2,2))
+qqplot_against_std(rt_standardized, 2.1)
+qqplot_against_std(rt_standardized, 3)
+qqplot_against_std(rt_standardized, 4)
+
+@
+
+The best value of $\nu$ is 3 because the points better fit the line than when $\nu$ is 2.1 or 4.  
+
+
+{\bf (b)}  In the previous part, we have obtained using graphical methods a rough fit of the SP500
+log-returns via the follwing model:
+\begin{equation}\label{e:t-returns}
+r_t = \log(S_t)-\log(S_{t-1}) = \mu + \sigma \epsilon_t,
+\end{equation}
+where $\epsilon_t$ follow the standardized $t$-distribution with $\nu$ degrees of freedom and $S_t$ is
+the value of the SP500 index on day $t$.
+
+Read {\bf Problem 4} on page 13 of \href{https://www.dropbox.com/s/0p7sz2oi0mgf7zn/Ruppert_Matheson_Statistics%20and%20Data%20Analysis%20for%20Financial%20Engineering.pdf?dl=0}{Ruppert \& Matteson}. 
+
+Modify the code therein where the returns are modeled as in (\ref{e:t-returns}) and 
+write an R-function that takes as an input the mean $\mu$ and the standard deviation $\sigma$ of the 
+log-returns, the parameter $\nu$ of the degrees of freedom for the standardized t-distribution, and 
+{\tt niter}. The output of the function should be the simulation-based estimate of the probability of 
+default for the hedge fund.
+
+Produce a table or a graph with the default probabilities as a function of $\nu>2$ and the volatility 
+$\sigma$. Comment on how do the volatility and the weight of the tail (represented by the parameter $\nu$)
+affect the default probability. {\bf Note:} Initially, use $\mu = 0.05/253$ and $\sigma=0.23/\sqrt{253}$ as in 
+the text and vary $\nu$.  Then you can fix a value of $\nu$ and vary $\sigma$.  Feel free to also produce
+heat-map images or 2-way tables of the default probability for a range of values of $\nu$ and $\sigma$. 
+
+
+<<p6b, include=TRUE>>=
+calcDefaultProb = function(niter, mu.hat, sd.hat, nu.hat){
+  below = rep(0, niter)
+  # set up storage
+  for (i in 1:niter){
+    r = mu.hat + sd.hat * fGarch::rstd(45,nu = nu.hat)
+    logPrice = log(1e6) + cumsum(r)
+    minlogP = min(logPrice) # minimum price over next 45 days
+    below[i] = as.numeric(minlogP < log(950000))
+  }
+  return(mean(below))
+}
+
+nlen=8
+q = seq(0.01,0.97, length=nlen-1)
+sigmas = sort(c(0.23 / sqrt(253),qexp(q,rate=0.5)))
+nus = sort(c(3.1, seq(2.1, 7, length=nlen-1)))
+p6b.res = matrix(0, nrow=nlen,ncol=nlen)
+rownames(p6b.res) = round(sigmas,3)
+colnames(p6b.res) = round(nus,3)
+set.seed(509)
+for(i in 1:nlen){
+  for(j in 1:nlen){
+    p6b.res[i,j] = calcDefaultProb(1e4/2, 0.05/253, sigmas[i], nus[j])
+    # print(paste(i," ",j))
+  }
+}
+
+knitr::kable(p6b.res)
+@
+
+The row are different volatility, and the column are different weight of the tail. From the above table, as the volatility increases, the probability of default increases. As the weight of the tail increases, the probability of default decreases. However, if the volatility is large, the weight of tail has little effect on the probability of default. Thus, a distribution with heavier tail and lower volatility would have the lowest probability of default. 
+
+\end{enumerate}
+
+
+\end{document}

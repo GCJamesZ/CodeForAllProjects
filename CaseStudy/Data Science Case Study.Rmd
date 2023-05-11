@@ -1,0 +1,164 @@
+---
+title: "Data Science Case Study"
+author: "Mingyu Zhong"
+date: "2022-11-07"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+rm(list=ls())
+setwd("Z:/CurrQuarter/DS")
+data = read.csv("train.csv", stringsAsFactors = F)
+data[sapply(data, is.character)] <- lapply(data[sapply(data, is.character)],
+                                       as.factor)
+str(data)
+```
+
+## Questions 1:
+
+### Trends in sales price over time, by year and month
+```{r}
+library(lubridate)
+library(ggplot2)
+nd = data %>% mutate(sold.time = paste(MoSold,YrSold, sep="-"))
+nd$sold.time=myd(nd$sold.time, truncated = 2)
+nd$sold.time= as.Date(nd$sold.time)
+nd = nd %>% drop_na(sold.time,SalePrice,YearBuilt,OverallQual)
+re = nd %>% group_by(sold.time) %>% summarize(Mean.SalePrice = mean(SalePrice),
+                                              Med.SalePrice = median(SalePrice))
+
+ggplot(data=re) + geom_line(aes(x=sold.time, y =Mean.SalePrice),color = "black") +
+  geom_line(aes(x=sold.time, y =Med.SalePrice),color = "red") + theme(legend.position="top") + 
+  labs(title = "Mean and Median of Sale Price Over Time",
+       x = "Time", y="Price")
+```
+
+### Relationship between sales price and year constructed
+```{r}
+q1b = nd %>% group_by(YearBuilt) %>% summarize(Mean.SalePrice = mean(SalePrice),
+                                              Med.SalePrice = median(SalePrice))
+q1b = q1b %>% filter(YearBuilt > 1872)
+ggplot(data=q1b) + geom_line(aes(x=YearBuilt, y =Mean.SalePrice),color = "black") +
+  geom_line(aes(x=YearBuilt, y =Med.SalePrice),color = "red") + theme(legend.position="top") + 
+  labs(title = "Mean and Median of Sale Price For Different Year Constructed Building",
+       x = "Building Cinstructed Time", y="Price")
+
+```
+
+
+### Relationship between sales price and overall quality index
+
+
+```{r}
+q1b = nd %>% group_by(OverallQual) %>% summarize(Mean.SalePrice = mean(SalePrice),
+                                              Med.SalePrice = median(SalePrice))
+
+ggplot(data=q1b) + geom_line(aes(x=OverallQual, y =Mean.SalePrice),color = "black") +
+  geom_line(aes(x=OverallQual, y =Med.SalePrice),color = "red") + theme(legend.position="top") + 
+  labs(title = "Mean and Median of Sale Price For Different Overall Quality Index",
+       x = "Overall Quality Index", y="Price")
+```
+
+
+
+
+###	Distribution of sales prices represented in the data (are they normally distributed?)
+```{r}
+par(mfrow=c(2,2))
+hist(data$SalePrice)
+hist(log(data$SalePrice))
+hist(log(log(data$SalePrice)))
+hist(log(log(log(data$SalePrice))))
+```
+Sale Prices are not normally distributed
+
+
+## What proxies would you show for a “neighborhood value” view in the dashboard? And what are the top 3 neighborhoods based on your proxies?
+The proxies are OverallQual, OverallCond, YearRemodAdd ,GarageArea, SalePrice.
+```{r}
+q2d = data
+q2d = q2d %>% drop_na(OverallQual, OverallCond, YearRemodAdd ,GarageArea, SalePrice)
+std.data = q2d %>% mutate(OverallQual = (OverallQual-mean(OverallQual))/sd(OverallQual),
+                          OverallCond = (OverallCond-mean(OverallCond))/sd(OverallCond),
+                          YearRemodAdd = (YearRemodAdd-mean(YearRemodAdd))/sd(YearRemodAdd),
+                          GarageArea = (GarageArea-mean(GarageArea))/sd(GarageArea),
+                          SalePrice = (SalePrice-mean(SalePrice))/sd(SalePrice))
+nei.data = std.data %>% group_by(Neighborhood) %>% summarize(Med.OverallQual = median(OverallQual),
+                                                  Med.OverallCond = median(OverallCond),
+                                                  Med.YearRemodAdd = median(YearRemodAdd),
+                                                  Med.GarageArea = median(GarageArea),
+                                                  Med.SalePrice = median(SalePrice))
+res = data.frame(cbind(nei.data[,1],score=rowSums(nei.data[,-1])))
+typeof(res)
+res[order(res$score, decreasing=TRUE),]
+# nei.data = nei.data[order(score),]
+```
+Top 3 neighborhoods are NridgHt, NoRidge, and StoneBr. 
+
+
+## Question 3:
+```{r}
+library(lmvar)
+library(caret)
+library(leaps)
+d= data
+d$SalePrice = log(log(log(d$SalePrice)))
+nacount = colSums(is.na(d)) %>% sort(decreasing = T) %>% names
+d = d %>% select(-c(nacount[1:16], Id))
+d = d[-1333, ]
+full.model = lm(SalePrice ~ ., data=d, x=T, y=T)
+# cv.lm(full.model, k = 5)
+# CV Root mean squared error    :  0.007630285
+sqrt(mean(resid(full.model)^2))
+# Root mean squared error    : 0.004656467
+
+# summary(full.model)
+# Adjusted R-squared:  0.867
+pval = summary(full.model)$coefficients[,4] 
+lmfm.var = pval[pval < 0.15] %>% sort %>% names
+
+
+imp <- as.data.frame(varImp(full.model))
+imp <- data.frame(overall = imp$Overall,
+           names   = rownames(imp))
+imp = imp[order(imp$overall,decreasing = T),]
+paste(imp$names[1:30],collapse=", ")
+```
+The Adjusted R-squared is 0.867. The Root mean squared error is 0.004656467
+
+The most significant features are RoofMatlWdShngl, RoofMatlCompShg, RoofMatlTar&Grv, RoofMatlWdShake, Exterior1stAsphShn, RoofMatlRoll, RoofMatlMembran, RoofMatlMetal, OverallQual, MSZoningRL.
+
+
+```{r}
+plot(full.model)
+```
+
+
+### Predict Test Set.
+```{r}
+test = read.csv("test.csv", stringsAsFactors = F)
+test[sapply(test, is.character)] <- lapply(test[sapply(test, is.character)],
+as.factor)
+
+factors = test %>% select_if(~class(.) == 'factor') %>% names
+
+for(i in 1:length(factors)){
+  full.model$xlevels[[factors[i]]] <- union(full.model$xlevels[[factors[i]]], levels(test[[factors[i]]]))
+}
+
+test = test %>% select(-c(nacount[1:16], Id))
+test = test %>% drop_na(MSZoning, Street)
+# full.model$xlevels[["Street"]] <- union(full.model$xlevels[["Street"]], levels(test[["Street"]]))
+
+pred = predict(full.model, newdata = test)
+highest.pred = pred %>% sort(decreasing = T)
+highest.pred[1:10] %>% names %>% paste(collapse = ", ")
+```
+The top ten houses in test.csv with the highest predicted sale price are the ones with index 1253, 801, 1438, 487, 1137, 802, 1087, 1155, 1145, 1334. 
+
+

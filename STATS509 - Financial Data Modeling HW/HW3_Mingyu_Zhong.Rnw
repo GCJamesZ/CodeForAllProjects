@@ -1,0 +1,763 @@
+\documentclass[11pt]{article}
+
+\usepackage[colorlinks=true]{hyperref} 
+\usepackage{amsmath,amsfonts,fullpage}
+\usepackage{color}
+\def\E{\mathbb E}
+\def\R{\mathbb R}
+\def\P{\mathbb P}
+\def\what{\widehat}
+\def\wtilde{\widetilde}
+\def\clr{\color{red}}
+
+\begin{document}
+<<Homework,include=FALSE>>=
+HW.number = 3
+Due.date  = "Feb 21, 2023 (Tue)"
+@
+
+\centerline{\Large Homework \Sexpr{HW.number} }
+
+\medskip
+\centerline{ Due on \Sexpr{Due.date} }
+
+\medskip
+\noindent
+{\bf Instructions:} 
+\begin{itemize}
+\item Install {\tt pdflatex}, {\tt R}, and 
+{\tt RStudio} on your computer.
+\item 
+Please edit the {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} file 
+in {\tt Rstudio} and compile with {\tt knitr} instead of {\tt Sweave}. 
+Go to the menu {\tt RStudio|Preferences...|Sweave} choose the 
+{\tt knitr} option, i.e., {\tt Weave Rnw files using knitr?}
+You may have to install {\tt knitr} and other necessary packages.  
+
+\item 
+Replace "First" and "Last" in the file-name with your first and last names,
+respectively. Complete your assignment by modifying and/or adding necessary 
+R-code in the text below. 
+
+\item You should submit both a {\bf PDF file} and a {\bf ZIP file} contining the
+data and the 
+{\em HW\Sexpr{HW.number}\_First\_Last.Rnw} file required to produce the PDF.
+The file should be named "HW\Sexpr{HW.number}\_First\_Last.zip" and it 
+should contain a single 
+folder named "First\_Last" with all the necessary data files, the 
+{\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} and  {\tt HW\Sexpr{HW.number}\_First\_Last.pdf} file, which 
+was obtained from compiling {\tt HW\Sexpr{HW.number}\_First\_Last.Rnw} with {\tt knitr}
+and \LaTeX.
+
+\item The GSI grader will annotate the PDF file you submit.  However, they will also 
+check if the code you provide in the ZIP file compiles correctly. If the file fails to compile due to errors other than missing
+packages, there will be an automatic 10\% deduction to your score. 
+
+\end{itemize}
+
+{\bf \Large Problems:} For your convenience a number of R-functions 
+are included in the .Rnw file and not shown in the compiled PDF.
+
+<<define some functions from lectures, include = F>>=
+ ginv <- function(A){ # Computes the Moore-Penrose 
+  out = svd(A)       # generalized inverse.
+  d = out$d; d[d>0] = 1/d[d>0]; d[d<0]=1/d[d<0];
+  return(out$v %*% diag(d) %*% t(out$u) )
+ }
+ mat.power <- function(A,p){ # Computes the power of a psd matrix
+  out = svd(A)   
+  d = out$d; d[d>0] = d[d>0]^p; d[d<0]=0;
+  return(out$v %*% diag(d) %*% t(out$u) )
+ }
+
+ mean.excess = function(x,u){
+   m.e <- c()
+  for (ui in u) 
+    {m.e = c(m.e, mean(x[x>=ui]-ui))}
+   return(m.e)
+ }
+ 
+ sim_gpd <- function(n,xi=0.5,sigma=1)((runif(n)^(-xi) -1)*sigma/xi)
+ 
+ gpd.nloglik = function(theta,x){
+   xi = theta[1]
+   sig = theta[2]
+  idx = which((x*xi>-sig)&(sig>0))
+  return (sum(log(abs(sig)) + (1+1/xi)*log(1+xi*x[idx]/abs(sig))))
+ }
+ 
+ grad.nlog.lik.GPD <- function(par,x){
+  xi=par[1];
+  sig=par[2];
+  idx = which(xi*x>-sig);
+  dl.dxi = -log(sig+xi*x[idx])/(xi^2) + (1+1/xi)*x[idx]/(sig+xi*x[idx]) + log(sig)/xi^2;
+  dl.dsig =  (1+1/xi)/(sig+xi*x[idx]) - 1/(xi*sig)
+  return(c(sum(dl.dxi),sum(dl.dsig)))
+ }
+ 
+ get_gpd_Hessian<-function(xi,sig,x){
+   eps = 1e-10;
+   H = cbind(
+     (grad.nlog.lik.GPD(c(xi+eps,sig),x)-grad.nlog.lik.GPD(c(xi,sig),x))/eps,
+     (grad.nlog.lik.GPD(c(xi,sig+eps),x)-grad.nlog.lik.GPD(c(xi,sig),x))/eps)
+   return((H+t(H))/2)
+  }
+ 
+hill.tail.est <- function(x,pk = 0.2){
+  #
+  # A function used to obtain initial values in the GPD inference for 
+  # heavy-tailed data.
+  # 
+  x = x[x>0];
+  n = length(x)
+  k = floor(n*pk);
+  sx = sort(x,decreasing = T)[1:(k+1)];
+  xi = mean(log(sx[1:k]/sx[k+1]))
+  sig = sx[k+1]*xi*((k+1)/n)^xi
+  return(c(xi,sig))
+}
+
+nr.step <- function(x,theta0= hill.tail.est(x), gamma=0.5){
+  #
+  # One step of the Newton-Raphson algorithm
+  #
+  H = get_gpd_Hessian(xi = theta0[1], sig = theta0[2],x);
+  theta = theta0 - gamma*solve(H)%*%grad.nlog.lik.GPD(theta0,x)
+  invHessian = solve(get_gpd_Hessian(xi=theta[1],sig=theta[2],x))
+  return(list("theta"=theta,"H.inv"=invHessian))
+}
+ 
+ 
+fit.gpd.Newton_Raphson <- function(x,threshold=c(),
+                                     pu=seq(from=0.8,to=0.99,length.out=20),
+                                      tol=1e-8, nr.iter=100,nr.gamma=0.5){
+  
+  if (length(threshold)>0){
+    u= threshold;
+    pu = mean(x<=u);
+  } else{
+    u = quantile(x,pu)
+  }
+  xi = sig = se.xi = se.sig = c();
+  Cov = array(dim = c(length(pu),2,2))
+  
+  for (i in c(1:length(u))){
+    ui=u[i]
+    y = (x[x>ui]-ui);
+    theta0 = hill.tail.est(y);
+    
+    fit = nr.step(y,theta0=theta0,gamma=nr.gamma);
+    iters=1;
+    while ((sum(( fit$theta-theta0)^2)/sum(theta0^2) > tol)&&(iters < nr.iter)){
+      theta0=fit$theta;
+      iters=iters+1;
+      fit = nr.step(y,theta0=theta0,gamma=nr.gamma);
+    }
+    
+    invHessian = fit$H.inv;
+    se = sqrt(abs(diag(invHessian)))
+    xi = c(xi,fit$theta[1])
+    se.xi = c(se.xi,se[1])
+    sig = c(sig,fit$theta[2])
+    se.sig = c(se.sig,se[2])
+    Cov[i,,] = invHessian;
+  }
+  return(list("xi"=xi,"se.xi"=se.xi,
+              "sig"=sig,"se.sig"=se.sig,
+              "Cov"=Cov))
+}
+
+ 
+ @
+ 
+
+\begin{enumerate}
+
+ \item {\bf The goal of this exercise is to practice the peaks-over-threshold methodology over 
+ simulated data.}
+ 
+ {\bf (a)} Simulate a sample of $n=10\, 000$ t-distributed random variables with degrees of
+ freedom $\nu = 1.1,\ 2, 3, 4$.  For each sample, produce {\em mean-excess plots} to determine
+ visually a ``reasonable'' threshold $u_0$ above which the distribution can be modeled with a
+ Generalized Pareto Distribution (GPD).  Examine a range of thresholds obtained from the empirical
+ quantiles of the data, e.g., $u = {\tt quantile}(x,{\tt seq(from=0.5,to=0.999,length.out=100)})$
+ and provide plots of the empirical mean of the excesses as a function of $u$.
+ 
+ {\bf Discuss:} What is the effect of $\nu$ on the choice of $u_0$.  Identify the quantile levels
+ for the ``best'' choices of $u_0$.
+ {\bf Hint for part (a)}
+<< Problem 1.a, include=T>>=
+nu = c(1.1,2,3,4);
+pu = seq(from=0.5,to=0.99,length.out=100);
+
+set.seed(509030101)
+par(mfrow=c(2,2))
+for (i in c(1:4)){
+  x =rt(n=1e4,df=nu[i]);
+  # print(mean(x<1.5))
+  u=quantile(x,pu)
+  me = mean.excess(x,u);
+  
+  m.se <- c()
+  for (ui in u) {
+    excess = x[x>=ui]-ui
+    m.se = c(m.se, qnorm(0.975) * sd(excess) / sqrt(length(excess)))
+  }
+  
+  plot(u,me,type="l",main=paste("nu=",nu[i]),xlab="Threshold u",ylab="Mean Excess");
+  segments(x0 = u, x1 = u, y0 = me - m.se,
+    y1 = me + m.se, col = "red", lwd = 2)
+  # lines(u,me - m.se)
+  # lines(u,me + m.se)
+ }
+ @
+ 
+ 
+
+ 
+For $\nu = 1.1$, the best $u_0 = 1$ since the line surpass the 95\% confidence intervals for the mean excess for $u_0 < 1.5$, and $u_0 =1$ correspond to $82.71$ quantile. 
+
+For $\nu = 2$, the best $u_0 = 2.5$ since the line surpass the 95\% confidence intervals for the mean excess for $u_0 < 2.5$, and $u_0 =2.5$ correspond to $93.45$ quantile. 
+ 
+For $\nu = 3$, the best $u_0 = 2.7$ since the line surpass the 95\% confidence intervals for the mean excess for $u_0 < 2.7$, and $u_0 =2.7$ correspond to $96.23$ quantile. 
+
+
+For $\nu = 4$, the best $u_0 = 3$ since the line surpass the 95\% confidence intervals for the mean excess for $u_0 < 3$, and $u_0 =3$ correspond to $97.78$ quantile. 
+
+As the degree of freedom $\nu$ increases, the best choice of $u_0$ decreases which means the quantile would increase.
+ 
+ \medskip
+ 
+ {\bf (b)} For each $\nu$ from part {\bf (a)} let now $u_0$ be chosen as the
+ empirical quantile of the data.  For each of the $4$ degrees of
+ freedom, fit the GPD using numerical maximization of the log-likelihood for the 
+ samples of excesses over the extreme thresholds $u_0$.  Produce asymptotic $95\%$ confidence
+ intervals for the parameter $\xi$ based on the Hessian.
+ << Problem 1.b, include = T>>=
+library(knitr)
+# u0 = c(15,4,3,1.5);
+u0 = c(1.5,2.5,2.7,3);
+ci =cbind(1/nu,0,0)
+  
+set.seed(509030102)
+for (i in c(1:4)){
+  x = rt(n=1e5,df=nu[i]);
+  #res=fit.gpd(x,threshold=u0[i]);
+  res=fit.gpd.Newton_Raphson(x,threshold=u0[i]);
+  ci[i,2]=res$xi-1.96*res$se.xi;
+  ci[i,3]=res$xi+1.96*res$se.xi;
+}
+colnames(ci)=c("xi","Lower","Upper")
+kable(ci,digits=4)
+@
+ {\bf (c)} The goal of this part is to study the coverage probabilities of the confidence intervals 
+ for $\xi$ obtained in part {\bf (b)}. 
+ 
+ {\bf Step 1.}  Fix $\nu$ and simulate a sample from the $t$-distribution 
+ of length $n=10,\ 000$. Let the thresholds $u$ be computed as the empirical quantiles of the 
+ data of levels $p={\tt seq}(from=0.8,to=0.99,length.out=10)$.  For each such threshold compute the  $95\%$ confidence intervals for $\xi$ and note whether they cover the true $\xi=1/\nu$.  
+ 
+ {\bf Step 2.} Replicate Step 1 independently $500$ times for 
+ $\nu = 1.1,\ 2,\ 3,\ 4$.  Report the empirical coverages of the 
+ resulting confidence intervals for $\xi$ in a $4\times 10$ table,
+ where the columns correspond to the quantile levels $p$ of the 
+ thresholds $u$ and the rows to the different values of the parameter $\nu$ of the $t$-distribution.
+ 
+ {\bf Discuss} the results from this experiment.  
+
+
+<<Problem 1.c, include=T>>=
+# pu = c(0.85,0.9,0.95,0.995);
+pu = round(seq(from=0.8,to=0.99,length.out=10),5)
+coverages = matrix(0,4,length(pu));
+iter = 500;
+set.seed(509030103)
+for (i in c(1:4)){
+    for (k in c(1:iter)){
+      x = rt(n=1e4,df=nu[i])
+      res = fit.gpd.Newton_Raphson(x,pu=pu)
+      coverages[i,] = coverages[i,]+
+        as.numeric((res$xi+1.96*res$se.xi>=(1/nu[i]))
+                   &(res$xi-1.96*res$se.xi<=(1/nu[i])));
+  }
+}
+coverages = coverages/iter;
+coverages = cbind(nu,coverages)
+colnames(coverages)=c("nu",as.character(pu))
+kable(coverages,digits=4)
+@
+
+
+For $\nu = 1.1$, using the empirical quantile that is greater than $92.67\%$ could obtain a correct 95\% for $\xi$. 
+
+However, for $\nu = 2,3,4$, the empirical quantile should be greater than 99\% to obtain a correct 95\% for $\xi$. 
+
+Thus, as $\nu$ increases which means the tail becomes lighter, the empirical quantile that is used for the threshold also needs to increase to obtain a 95\% confidence interval for $\xi$. However, note that as the quantile increases above 99\%, few data points are available to estimate the parameters of the GPD which would be difficult to get a correct estimation, so it may be not ideal to use the peaks-over-threshold methodology to estimate the probability of extreme events for a distribution with lighter tail. 
+
+
+
+
+
+
+\newpage
+ \item {\bf  The goal of this problem is to implement the Peaks-over-Threshold methodology for 
+ the predition of Value-at-Risk and Expected Shortfall.}
+ 
+ {\bf (a)} Write an R-function which estimates Value-at-Risk and Expected Shortfall at 
+ level $\alpha$ for extremely small $\alpha$ by using the Peaks-over-Threshold methodology.  
+ 
+ \underline{The function inputs are:}
+ \begin{itemize}
+  \item {\tt data:} a vector containing the data
+  \item  $\alpha$: a vector of levels for $VaR_\alpha$ and $ES_\alpha$
+  \item $p$: a scalar $0<p<1-\alpha$ -- quantile level for the threshold, i.e., 
+  $u={\tt quantile}({\tt data},p)$.
+ \end{itemize}
+ {\underline{The function output:}} A list of two arrays 
+ containing the $VaR_\alpha$ and $ES_\alpha$ estimates.
+ 
+ The function should fit the GPD model to the data exceeding threshold $u$ and use the tail
+ of the estimated GPD to extrapolate the values of $VaR_\alpha$ and $ES_\alpha$. Recall that the
+ estimate of $VaR_\alpha$ is:
+ $$
+\what{\rm VaR}_\alpha (u) 
+ := \left( {\Big[}\frac{n\alpha}{N_u} \Big]^{-\what\xi} -1\right) \times \frac{\what\sigma(u)}{\what\xi} + u,
+ $$
+ where in this case $N_u/n \approx p$ will be the proportion of the sample exeeding $u$.
+ 
+ {\bf Derive an analytic expression.} for
+ {\clr $ES_\alpha = \E[X|X>VaR_\alpha]$}
+ in terms of $\xi$ and $\sigma$ by assuming that $X-u | X>u$ is 
+ $GPD(\xi,\sigma)$ and $\xi<1$.  Use this expression in computing 
+ point-estimates and parametric-bootstrap confidence intervals 
+ for $ES_\alpha$.
+ 
+ 
+ 
+ 
+Let $Y= X-u$, so $Y+u=X$. Thus, $X-u|X>u = Y|Y+u>u \sim GPD(\xi,\sigma)$. 
+
+By the CDF method, 
+\begin{align*}
+    P(X\le x|X>u)&= P(Y+u\le x|Y+u>u)\\
+    &= P(Y\le x-u|Y+u>u)\\
+    &= 1-(1+\xi\frac{x-u}{\sigma})^{-\frac{1}{\xi}}
+\end{align*}
+
+Then, $P(X=x|X>u) = \frac{d[P(X\le x|X>u)]}{dx} = \frac{1}{\sigma}(1+\xi\frac{x-u}{\sigma})^{-\frac{1}{\xi}-1}$.
+
+By definition of conditional probability, $P(X=x|X>u) = \frac{P(X=x \cap X>u)}{P(X>u)}$, so $P(X=x \cap X>u) = P(X=x|X>u)P(X>u)$.
+
+Thus, To find the expected losses,
+\begin{align*}
+    E[X|X>VaR_\alpha] &= \frac{1}{P(X>VaR_\alpha)}\int_{VaR_\alpha}^\infty zP(X=z \cap X>u)\,dz\\
+    &= \frac{1}{P(X>VaR_\alpha)}\int_{VaR_\alpha}^\infty zP(X=x|X>u)P(X>u)\,dz\\
+    &= \frac{P(X>u)}{\alpha}\int_{VaR_\alpha}^\infty z\frac{1}{\sigma}(1+\xi\frac{x-u}{\sigma})^{-\frac{1}{\xi}-1}\,dz\\
+    & \text{ Let } v = \frac{z-u}{\sigma} \rightarrow z = v\sigma +u, \text{so } dv = \frac{dz}{\sigma}\\
+    &= \frac{P(X>u)}{\alpha}\int_{\frac{VaR_\alpha-u}{\sigma}}^\infty (v\sigma +u)(1+\xi z)^{-\frac{1}{\xi}-1}\,dv\\
+    & \text{ Let } a = (v\sigma+u), \text{so } da = \sigma\\
+    & \text{ Let } b = -(1+\xi v)^{-\frac{1}{\xi}}, \text{so } db = (1+\xi v)^{-\frac{1}{\xi-1}}\\
+    &= \frac{P(X>u)}{\alpha}( -(1+\xi v)^{-\frac{1}{\xi}}(v\sigma+u)\biggr\rvert_{\frac{VaR_\alpha-u}{\sigma}}^\infty - \int_{\frac{VaR_\alpha-u}{\sigma}}^\infty \sigma(-(1+\xi v)^{-\frac{1}{\xi}})\,dv)\\
+    &= \frac{P(X>u)}{\alpha}( (1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}}(\frac{VaR_\alpha-u}{\sigma}\sigma+u) - \int_{\frac{VaR_\alpha-u}{\sigma}}^\infty \sigma(-(1+\xi v)^{-\frac{1}{\xi}})\,dv)\\
+    &= \frac{P(X>u)}{\alpha}( (1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}}(VaR_\alpha) + \int_{\frac{VaR_\alpha-u}{\sigma}}^\infty \sigma(1+\xi v)^{-\frac{1}{\xi}}\,dv)\\
+    & \text{ Let } c = 1+\xi v, \text{so } \frac{dc}{\xi} = dv\\
+    &= \frac{P(X>u)}{\alpha}( (1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}}(VaR_\alpha) + \frac{\sigma}{\xi}\int_{1+\xi \frac{VaR_\alpha-u}{\sigma}}^\infty c^{-\frac{1}{\xi}}\,dc)\\
+    &= \frac{P(X>u)}{\alpha}( (1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}}(VaR_\alpha) + \frac{\sigma}{\xi} (\frac{c^{-\frac{1}{\xi}+1}}{-\frac{1}{\xi}+1})\biggr\rvert_{1+\xi \frac{VaR_\alpha-u}{\sigma}}^\infty)\\
+    &= \frac{P(X>u)}{\alpha}( (1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}}(VaR_\alpha) -\frac{\sigma}{\xi(-\frac{1}{\xi}+1)}(1+\xi \frac{VaR_\alpha-u}{\sigma})^{-\frac{1}{\xi}+1})\\
+\end{align*}
+ 
+ 
+ 
+
+ << Problem 2.a>>=
+x = rt(n=1e4,df=3) 
+get_VaR <- function(data, p=0.99, alpha){
+ u = quantile(data,p);
+ names(u)="";
+ fit <- fit.gpd.Newton_Raphson(data,threshold = u);
+ xi.hat <- fit$xi
+ sig.hat <- fit$sig
+ Cov = fit$Cov[1,,]
+ VaR <-  ((alpha/mean(data>=u))^(-xi.hat) -1)*sig.hat/xi.hat+u
+ return(list("VaR"=VaR,"alpha"=alpha,
+             "Cov"=Cov,"xi"=xi.hat,
+             "sig"=sig.hat))
+}
+#
+# Add a function computing Expected Shortfall with similar inputs and outputs.
+#
+
+get_Es <- function(data, p=0.99, alpha){
+ u = quantile(data,p);
+ names(u)="";
+ fit <- fit.gpd.Newton_Raphson(data,threshold = u);
+ xi.hat <- fit$xi
+ sig.hat <- fit$sig
+ Cov = fit$Cov[1,,]
+ VaR <-  ((alpha/mean(data>=u))^(-xi.hat) -1)*sig.hat/xi.hat+u
+ Es = length(data[data> u])/(length(data)*alpha) *
+   ((1+xi.hat * (VaR-u)/sig.hat)^(-1/xi.hat)*VaR - 
+      sig.hat * (1+xi.hat(VaR-u)/sig.hat)^(-1/xi.hat +1)/ 
+      (xi.hat*(-1/xi.hat+1)))
+ return(Es)
+}
+
+
+get_Var_and_Es = function(data, p=0.99, alpha){
+  Es = get_Es(data, p, alpha)
+  Var= get_VaR(data, p, alpha)$VaR
+  return(cbind(Es, Var))
+}
+ 
+ @
+ 
+ 
+ {\bf (b)} We want to obtain confidence intervals for VaR$_\alpha$ and $ES_\alpha$.  Here, we will implement the so-called {\bf parametric bootstrap}.  
+ 
+ {\bf Step 1.} Use the function from part {\bf (a)} to fit a GPD model to the excesses
+ of the data over the $p$-th quantile.
+ 
+ {\bf Step 2.} Pretending that the MLE is precisely asymptotically normal, we will assume that
+ $(\hat \xi,\hat \sigma) \sim {\cal N}((\xi,\sigma),C)$, where $C$ is the inverse of the Hessian.
+ 
+ Now, we simulate $N=2\, 000$ independent bivariate Normal random vectors 
+ $$
+ (\hat \xi^*_i, \hat \sigma_i^*) \sim {\cal N}( (\hat \xi,\hat \sigma), C),\ i=1,\cdots,N.
+ $$
+ {\bf Step 3.} Using the formulae obtained in part {\bf (a)} for $VaR_\alpha$ and $ES_\alpha$,
+ by plugging in $ (\hat \xi^*_i, \hat \sigma_i^*)$ for $(\hat \xi,\hat \sigma)$, generate
+ $N=2\, 000$ samples of $VaR_{\alpha,i}$ and $ES_{\alpha,i},\ i=1,\cdots,N$.   Compute
+ probability-symmetric empirical $95\%$ confidence intervals for $VaR_\alpha$ and $ES_\alpha$
+ from these samples.
+ 
+ {\bf Note:} If $\hat \sigma_i^*$ is simulated as negative, you will have to drop this sample.
+ 
+ 
+ {\bf Hint to part (b):}
+ <<Problem 2.b, include=T>>=
+ get_par_boostrap_ci_VaR <- function(x,MC.iter=2000,p=0.99,
+                                     alpha,p.lower=0.025,
+                                     p.upper=0.975,qfactor=1.0){
+   res <- get_VaR(data=x, p=p, alpha)
+   u = quantile(x,p); names(u)="";
+   pu = mean(x>=u);
+   theta.star = 
+     matrix(c(res$xi,res$sig),2,1)%*%matrix(1,1,MC.iter) + 
+     qfactor*mat.power(res$Cov,1/2)%*% matrix(rnorm(2*MC.iter),2,MC.iter);
+   xi.star = theta.star[1,]
+   sig.star = theta.star[2,]
+   #dropping negative sigma.star variates's
+   xi.star=xi.star[sig.star>0]
+   sig.star=sig.star[sig.star>0]
+   ci = c();
+   for (ia in c(1:length(alpha))) {
+     a = alpha[ia]
+     VaR.a = ((a/pu)^(-xi.star) -1)*sig.star/xi.star+u
+      ci = cbind(ci, quantile(VaR.a, c(p.lower,p.upper)));
+   }
+   
+   rownames(ci)<- c("Lower","Upper");
+   colnames(ci) <- alpha;
+   return(ci)
+ }
+
+get_par_boostrap_ci_Es <- function(x,MC.iter=2000,p=0.99,alpha,p.lower=0.025,
+                                     p.upper=0.975,qfactor=1.0){
+   res <- get_VaR(data=x, p=p, alpha)
+   u = quantile(x,p); names(u)="";
+   pu = mean(x>=u);
+   theta.star = 
+     matrix(c(res$xi,res$sig),2,1)%*%matrix(1,1,MC.iter) + 
+     qfactor*mat.power(res$Cov,1/2)%*% matrix(rnorm(2*MC.iter),2,MC.iter);
+   xi.star = theta.star[1,]
+   sig.star = theta.star[2,]
+   #dropping negative sigma.star variates's
+   xi.star=xi.star[sig.star>0]
+   sig.star=sig.star[sig.star>0]
+   ci = c();
+   for (ia in c(1:length(alpha))) {
+     a = alpha[ia]
+     VaR.a = ((a/pu)^(-xi.star) -1)*sig.star/xi.star+u
+     coe = mean(x>u) / alpha[ia]
+     ft = (1+xi.star * (VaR.a-u)/sig.star)^(-1/xi.star)*VaR.a
+     st = sig.star * (1+xi.star*(VaR.a-u)/sig.star)^(-1/xi.star +1)/ 
+       (xi.star*(-1/xi.star+1))
+     Es.a =  coe * (ft - st)
+     ci = cbind(ci, quantile(Es.a, c(p.lower,p.upper)));
+   }
+   
+   rownames(ci)<- c("Lower","Upper");
+   colnames(ci) <- alpha;
+   return(ci)
+ }
+
+
+ @
+ 
+ 
+ {\bf (c)} The goal of this part is to check the coverage of the parametric-bootstrap 
+ based confidence intervals obtained in part {\bf (b)}.
+ 
+  {\bf Step 1.}  Consider $t$-distribution model with $\nu=3$ degrees of freedom.
+ Using the Monte Carlo method, simulate a very large sample from the $t$-model and compute 
+ the true values of $VaR_\alpha$ and $ES_\alpha$ using empirical quantiles and averages, respectively  for $\alpha  = 10^{-4}, 10^{-5}, 10^{-6}.$
+ 
+ {\bf Step 2.} Now, simulate {\clr $n=10^4$} points from this model.  Using {\clr $p=0.95$}, obtain the 
+ GPD fit and the resulting parametric-bootstrap $95\%$ confidence intervals obtained in {\bf (b)}
+ for  $VaR_\alpha$ and $ES_\alpha$, $\alpha = 10^{-4}, 10^{-5}, 10^{-6}$.
+ 
+ {\bf Step 3.} Replicate {\bf Step 2.} independently, say $500$ times and obtain
+ the empirical coverages of the ``true'' values of VaR$_\alpha$ and ES$_\alpha$ from 
+ {\bf Step 1.} Report these coverages in a table and comment.
+ 
+
+ 
+  <<Problem 2.c, include=T>>=
+require(knitr)
+alpha = c(1e-4,1e-5,1e-6)
+VaR.true = - qt(alpha,df=3)
+coverages = 0;
+N.ci.replicates = 500
+set.seed(5090203)
+for (i in c(1:N.ci.replicates)){
+  x = rt(n=1e4,df=3);
+  ci = get_par_boostrap_ci_VaR(x,p=0.95,alpha=alpha,MC.iter = 2000);
+  coverages = coverages + 
+    ( VaR.true<= ci[2,])*(ci[1,]<= VaR.true);
+}
+coverages.var=rbind(alpha,coverages/N.ci.replicates)
+rownames(coverages.var)<-c("alpha","emp coverage VaR")
+kable(coverages.var)
+
+#
+# Do something similar with Expected Shortfall, where the "true" values can 
+# be computed using Monte Carlo.
+#
+
+# int.res = vector()
+# for(i in 1:length(VaR.true)){
+#   int.res[i] = integrate(function(x){x*dt(-x, df = 3)},VaR.true[i], Inf)$value
+#   print(int.res[i] )
+# }
+# Es.true = 1/alpha * int.res
+
+set.seed(509030203)
+dat = rt(1e7, df = 3)
+VaR.true.emp = -quantile(dat, alpha)
+Es.true = vector()
+L = -dat
+for(i in 1:length(VaR.true.emp)){
+  Es.true[i] = mean(L[L > VaR.true.emp[i]])
+}
+# print(Es.true)
+
+coverages = 0;
+N.ci.replicates = 500
+set.seed(5090203)
+for (i in c(1:N.ci.replicates)){
+  x = rt(n=1e4,df=3);
+  ci = get_par_boostrap_ci_Es(x,p=0.95,alpha=alpha,MC.iter = 2000);
+  # print(ci)
+  coverages = coverages + 
+    (Es.true<= ci[2,])*(ci[1,]<= Es.true);
+}
+coverages.es=rbind(alpha,coverages/N.ci.replicates)
+rownames(coverages.es)<-c("alpha","emp coverage ES")
+kable(coverages.es)
+@
+
+As alpha decreases, the empirical coverage for the value at risk also decrease from 0.9 to 0.87 which are all quite lower than the nominal 95\% coverage, but the empirical coverage for the expected shortfall increases from 0.89 to 0.94 which are approaching the nominal 95\% coverage. 
+
+
+
+
+\newpage
+ \item The goal of this exercise is to apply the methodology in the previous
+ two exercises to financial data.  Use the SP500 time series for the period
+{\clr 1962/07/03 through 2021/12/31.}
+ 
+ {\bf (a)} Load the sp500 time series and focus on the {\bf losses} (negative daily 
+ returns). Examine the mean-excess plot to determine a suitable threshold $u_0$, above which 
+ the excesses are likely to follow a GPD model. Proved the plots and comment.
+ 
+<<P3a>>=
+p3data = readr::read_csv(gzfile("sp500_full.csv.gz"))
+
+p3data$caldt<-as.Date(as.character(p3data$caldt),"%Y%m%d")
+idx1 =which(p3data$caldt>="1962-07-03" & 
+                p3data$caldt<"2021-12-31" & !is.na(p3data$sprtrn))
+curyeardf = p3data[idx1,]
+
+# str(curyeardf)
+# nu = c(1.1,2,3,4);
+par(mfrow = c(1,1))
+pu = seq(from=0.5,to=0.999,length.out=100);
+x = curyeardf$sprtrn
+u=quantile(x,pu)
+me = mean.excess(x,u);
+
+m.se <- c()
+for (ui in u) {
+  excess = x[x>=ui]-ui
+  m.se = c(m.se, qnorm(0.975) * sd(excess) / sqrt(length(excess)))
+}
+
+plot(u,me,type="l",main=paste("nu=",nu[i]),xlab="Threshold u",ylab="Mean Excess");
+segments(x0 = u, x1 = u, y0 = me - m.se,
+  y1 = me + m.se, col = "red", lwd = 2)
+
+@
+
+
+
+ 
+ 
+{\bf (b)} Fit the GPD model and produce plots of the point estimates and
+ 95\% confidence intervals for $\xi$ over a range of thresholds.  
+ 
+<<P3b>>=
+u0 = as.vector(u[u>0.02]);
+ci = cbind(u0, 0, 0, 0);
+x = curyeardf$sprtrn
+set.seed(5090312)
+for(i in 1:length(u0)){
+  #res=fit.gpd(x,threshold=u0[i]);
+  # print(i)
+  res=fit.gpd.Newton_Raphson(x,threshold=u0[i]);
+  ci[i, 2] = res$xi-1.96*res$se.xi
+  ci[i, 3] = res$xi
+  ci[i, 4] = res$xi+1.96*res$se.xi
+}
+colnames(ci)=c("thresholds","Lower", "xi.hat",  "Upper")
+knitr::kable(ci,digits=4)
+
+plot(u0,ci[,3],type="l",main="Estimate of xi for GPD",
+     xlab="Threshold u",ylab="xi", ylim = c(min(ci[,-1]), max(ci[,-1])));
+segments(x0 = u0, x1 = u0, y0 = ci[,2],
+  y1 = ci[,4], col = "red", lwd = 2)
+@
+
+ 
+ {\bf (c)} Produce parametric-bootstrap confidence intervals for $VaR_\alpha$ and $ES_\alpha$ for
+ $\alpha =1/252, 1/(5*252), 1/(10*252)$, which are levels of risk corresponding to return periods 
+ of $1-$, $5-$ and $10$-years.
+
+
+<<P3c>>=
+alpha = c(1/252, 1/(5*252), 1/(10*252))
+x = curyeardf$sprtrn
+ci.Var = get_par_boostrap_ci_VaR(x,p=0.95,alpha=alpha,MC.iter = 2000);
+colnames(ci.Var)=c("1 Year","5 Years", "10 Years")
+rownames(ci.Var)= c("Lower VaR","Upper VaR")
+knitr::kable(ci.Var,digits=4)
+ci.Es = get_par_boostrap_ci_Es(x,p=0.95,alpha=alpha,MC.iter = 2000);
+colnames(ci.Es)=c("1 Year","5 Years", "10 Years")
+rownames(ci.Es)= c("Lower ES","Upper ES")
+knitr::kable(ci.Es,digits=4)
+@
+
+ 
+ 
+ 
+ {\clr Discuss the effect of the threshold used in the GPD inference on the 
+ parametric-bootstrap intervals.  Interpret these intervals, i.e., Is it reasonable to expect that over a period of $10$ years the SP500 index will see a daily drop of around 7 percent?}
+ 
+As the threshold/alpha level decreases, the width of the confidence intervals increases, and both the lower and upper bound of the confidence interval increases. Thus, as the level of risk which corresponds to the period of return increases, the range of the loss increases, and the more losses would be incurred. Since 0.07 is not contained in the 95\% CI of the expected shortfall for 10 years which are (0.0806, 0.1346), it is not reasonable to expect the over a period of 10 years, the SP500 index will see a daily drop of around 7 percent. Instead, it would be more reasonable to expect to see a daily drop between 8\% and 13\%. 
+ 
+ 
+
+\newpage
+\item The goal of this exercise is to understand the accuracy of the vanilla bootstrap for 
+obtaining confidence intervals for $VaR_\alpha$ and $ES_\alpha$ for non-extreme levels of $\alpha \gg 1/n$,
+where $n$ is the sample size. 
+
+{\bf Warning:} This experiment may require some time to run since 
+the vanilla bootstrap method is computationally intensive and we need to repeat the bootstrap calculation for
+multiple replications of the data.
+
+{\bf (a)} Complete/modify the following code to obtain simple R-functions for computing 
+empirical estimates of VaR$_\alpha$ and $ES_\alpha$:
+
+<<Problem 4.a, include=T>>=
+emp.VaR <- function(data,VaR.alpha=c(0.01),losses=TRUE){
+  if (losses==FALSE){
+    return(-quantile(data,1-VaR.alpha))
+  } else {
+    return(quantile(data,1-VaR.alpha))
+  }
+}
+
+emp.ES <- function(data,ES.alpha=c(0.01),losses=TRUE){
+  if (losses==FALSE){data=-data}
+  VaR = emp.VaR(data,VaR.alpha=ES.alpha)
+  return(mean(data[data>VaR]))
+}
+@
+ 
+{\bf (b)} Using the function {\tt bcanon} from the package{\tt bootstrap}, produce probability-symmetric 
+bootstrap confidence intervals for $VaR_\alpha$ and $ES_\alpha$ at level {\tt alpha=0.01} for
+a random sample of $n=10^4$ from the t-distribution with $\nu=3$ degrees of freedom.
+
+
+{\bf Hint for part (b). }
+
+<<Probelm 4.b, include = T>>=
+library(bootstrap)
+set.seed(509030401)
+x = rt(n=1e4,df=3);
+out <- bcanon(x = x,nboot = 500,emp.VaR,VaR.alpha=0.01)
+Lower.VaR = out$confpoints[1,2];
+Upper.VaR = out$confpoints[8,2];
+
+
+out.ES <- bcanon(x = x,nboot = 500,emp.ES,ES.alpha=0.01)
+Lower.ES = out.ES$confpoints[1,2];
+Upper.ES = out.ES$confpoints[8,2];
+knitr::kable(rbind(c("VaR",Lower.VaR,Upper.VaR), c("ES",Lower.ES, Upper.ES)))
+@
+
+{\bf (c)} Continuing on the study from part {\bf (b)}... 
+Obtain the true values of $VaR_\alpha$ and $ES_\alpha$ for this model using a large Monte Carlo experiment or an
+exact analytical calculation.  Then, simulate $N=100$ independent samples of size $n=10^4$ from the t-distribution 
+with $\nu=3$ degrees of freedom.  For each of these samples, keep track of whether the bootstrap-based 95-percent confidence intervals
+cover the true values of $VaR_\alpha$ and $ES_\alpha$ (obtained from {\bf (b)}).  Produce a table with the empirical coverage
+proportions.  {\bf Discuss}.  
+
+{\bf Hint for part (c). }
+<<Probelm 4.c, include = T>>=
+library(bootstrap)
+VaR.true = -qt(0.01,df=3)
+ES.true = 1/0.01 * integrate(function(x){x*dt(-x, df = 3)},VaR.true, Inf)$value
+
+MC.iterates =100
+coverages = 0;
+cover.ES = 0;
+set.seed(509030403)
+for (i in c(1:MC.iterates)){
+  x = rt(n=1e4,df=3);
+  out <- bcanon(x = x,nboot = 500,emp.VaR,VaR.alpha=0.01)
+  Lower = out$confpoints[1,2]; 
+  Upper = out$confpoints[8,2];
+  coverages = coverages + (VaR.true<=Upper)*(VaR.true>=Lower);
+  # print(i)
+  out.ES = bcanon(x = x,nboot = 500,emp.ES,ES.alpha=0.01)
+  Lower.ES = out.ES$confpoints[1,2];
+  Upper.ES = out.ES$confpoints[8,2];
+  cover.ES = cover.ES + (ES.true<=Upper.ES)*(ES.true>=Lower.ES);
+}
+# coverages/MC.iterates
+# cover.ES/MC.iterates
+knitr::kable(cbind(c("VaR Coverage", "ES Coverage"), 
+                   c(coverages/MC.iterates,cover.ES/MC.iterates), 
+                   c(coverages/MC.iterates -  2*sqrt(.95*0.05/100), 
+                     cover.ES/MC.iterates -  2*sqrt(.95*0.05/100)),
+                   c(coverages/MC.iterates + 2*sqrt(.95*0.05/100), 
+                     cover.ES/MC.iterates + 2*sqrt(.95*0.05/100))))
+@
+
+From the Monte Carlo simulation, the bootstrap based 95\% confidence interval for the value at risk covers the true value at risk 99\% of the time which is above the nominal coverage with a confidence interval of (0.946, 1), and the bootstrap based 95\% confidence interval for the expected shortfall covers the true expected shortfall 98\% of the time which is also above the nominal coverage with a confidence interval of (0.936, 1). Therefore, since both the Monte Carlo confidence intervals for the coverage of Value at Risk and Expected Shortfall contains 0.95, the the bootstrap method could be used to obtain a good 95\% confidence interval for both the Value at Risk and Expected Shortfall. 
+
+
+\end{enumerate}
+
+\end{document}
